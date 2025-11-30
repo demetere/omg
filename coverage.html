@@ -1,0 +1,3843 @@
+
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+		<title>omg: Go Coverage Report</title>
+		<style>
+			body {
+				background: black;
+				color: rgb(80, 80, 80);
+			}
+			body, pre, #legend span {
+				font-family: Menlo, monospace;
+				font-weight: bold;
+			}
+			#topbar {
+				background: black;
+				position: fixed;
+				top: 0; left: 0; right: 0;
+				height: 42px;
+				border-bottom: 1px solid rgb(80, 80, 80);
+			}
+			#content {
+				margin-top: 50px;
+			}
+			#nav, #legend {
+				float: left;
+				margin-left: 10px;
+			}
+			#legend {
+				margin-top: 12px;
+			}
+			#nav {
+				margin-top: 10px;
+			}
+			#legend span {
+				margin: 0 5px;
+			}
+			.cov0 { color: rgb(192, 0, 0) }
+.cov1 { color: rgb(128, 128, 128) }
+.cov2 { color: rgb(116, 140, 131) }
+.cov3 { color: rgb(104, 152, 134) }
+.cov4 { color: rgb(92, 164, 137) }
+.cov5 { color: rgb(80, 176, 140) }
+.cov6 { color: rgb(68, 188, 143) }
+.cov7 { color: rgb(56, 200, 146) }
+.cov8 { color: rgb(44, 212, 149) }
+.cov9 { color: rgb(32, 224, 152) }
+.cov10 { color: rgb(20, 236, 155) }
+
+		</style>
+	</head>
+	<body>
+		<div id="topbar">
+			<div id="nav">
+				<select id="files">
+				
+				<option value="file0">github.com/demetere/omg/cmd/omg/main.go (0.0%)</option>
+				
+				<option value="file1">github.com/demetere/omg/internal/testhelpers/testhelpers.go (0.0%)</option>
+				
+				<option value="file2">github.com/demetere/omg/migrations/00000000000000_example.go (0.0%)</option>
+				
+				<option value="file3">github.com/demetere/omg/pkg/client.go (54.3%)</option>
+				
+				<option value="file4">github.com/demetere/omg/pkg/helpers.go (34.7%)</option>
+				
+				<option value="file5">github.com/demetere/omg/pkg/migration.go (100.0%)</option>
+				
+				<option value="file6">github.com/demetere/omg/pkg/migration_generator.go (95.6%)</option>
+				
+				<option value="file7">github.com/demetere/omg/pkg/model_parser.go (66.2%)</option>
+				
+				<option value="file8">github.com/demetere/omg/pkg/model_tracker.go (84.7%)</option>
+				
+				<option value="file9">github.com/demetere/omg/pkg/tracker.go (92.9%)</option>
+				
+				</select>
+			</div>
+			<div id="legend">
+				<span>not tracked</span>
+			
+				<span class="cov0">not covered</span>
+				<span class="cov8">covered</span>
+			
+			</div>
+		</div>
+		<div id="content">
+		
+		<pre class="file" id="file0" style="display: none">package main
+
+import (
+        "context"
+        "flag"
+        "fmt"
+        "net/url"
+        "os"
+        "strings"
+        "time"
+
+        "github.com/demetere/omg/pkg"
+        _ "github.com/demetere/omg/migrations" // Import migrations
+        "github.com/joho/godotenv"
+)
+
+var (
+        migrationsDir string
+        dbURL         string
+)
+
+func main() <span class="cov0" title="0">{
+        // Load .env file
+        _ = godotenv.Load()
+
+        // Define flags
+        flag.StringVar(&amp;migrationsDir, "dir", "migrations", "directory with migration files")
+        flag.StringVar(&amp;dbURL, "dburl", "", "OpenFGA database URL (openfga://store_id@host:port?auth=...)")
+
+        if len(os.Args) &lt; 2 </span><span class="cov0" title="0">{
+                printUsage()
+                os.Exit(1)
+        }</span>
+
+        <span class="cov0" title="0">command := os.Args[1]
+
+        // Parse flags from remaining arguments
+        flagSet := flag.NewFlagSet(command, flag.ExitOnError)
+        flagSet.StringVar(&amp;migrationsDir, "dir", "migrations", "directory with migration files")
+        flagSet.StringVar(&amp;dbURL, "dburl", os.Getenv("OPENFGA_DATABASE_URL"), "OpenFGA database URL")
+        flagSet.Parse(os.Args[2:])
+
+        ctx := context.Background()
+
+        // Commands that don't need OpenFGA client
+        switch command </span>{
+        case "create":<span class="cov0" title="0">
+                args := flagSet.Args()
+                if len(args) &lt; 1 </span><span class="cov0" title="0">{
+                        fmt.Println("Usage: omg create &lt;migration_name&gt;")
+                        os.Exit(1)
+                }</span>
+                <span class="cov0" title="0">if err := createMigration(args[0]); err != nil </span><span class="cov0" title="0">{
+                        fmt.Printf("Error: Failed to create migration: %v\n", err)
+                        os.Exit(1)
+                }</span>
+                <span class="cov0" title="0">return</span>
+        case "generate":<span class="cov0" title="0">
+                args := flagSet.Args()
+                name := "auto_migration"
+                if len(args) &gt;= 1 </span><span class="cov0" title="0">{
+                        name = args[0]
+                }</span>
+                <span class="cov0" title="0">if err := generateMigration(name); err != nil </span><span class="cov0" title="0">{
+                        fmt.Printf("Error: Failed to generate migration: %v\n", err)
+                        os.Exit(1)
+                }</span>
+                <span class="cov0" title="0">return</span>
+        case "diff":<span class="cov0" title="0">
+                if err := showDiff(); err != nil </span><span class="cov0" title="0">{
+                        fmt.Printf("Error: Failed to show diff: %v\n", err)
+                        os.Exit(1)
+                }</span>
+                <span class="cov0" title="0">return</span>
+        case "init":<span class="cov0" title="0">
+                args := flagSet.Args()
+                if len(args) &lt; 1 </span><span class="cov0" title="0">{
+                        fmt.Println("Usage: omg init &lt;store_name&gt;")
+                        os.Exit(1)
+                }</span>
+                <span class="cov0" title="0">if err := initStore(args[0]); err != nil </span><span class="cov0" title="0">{
+                        fmt.Printf("Error: Failed to initialize store: %v\n", err)
+                        os.Exit(1)
+                }</span>
+                <span class="cov0" title="0">return</span>
+        case "list-stores":<span class="cov0" title="0">
+                if err := listStores(); err != nil </span><span class="cov0" title="0">{
+                        fmt.Printf("Error: Failed to list stores: %v\n", err)
+                        os.Exit(1)
+                }</span>
+                <span class="cov0" title="0">return</span>
+        }
+
+        // Initialize OpenFGA client for other commands
+        <span class="cov0" title="0">client, err := initOpenFGAClient()
+        if err != nil </span><span class="cov0" title="0">{
+                fmt.Printf("Error: Failed to initialize OpenFGA client: %v\n", err)
+                os.Exit(1)
+        }</span>
+
+        <span class="cov0" title="0">switch command </span>{
+        case "up":<span class="cov0" title="0">
+                if err := runUp(ctx, client); err != nil </span><span class="cov0" title="0">{
+                        fmt.Printf("Error: Migration up failed: %v\n", err)
+                        os.Exit(1)
+                }</span>
+        case "down":<span class="cov0" title="0">
+                if err := runDown(ctx, client); err != nil </span><span class="cov0" title="0">{
+                        fmt.Printf("Error: Migration down failed: %v\n", err)
+                        os.Exit(1)
+                }</span>
+        case "status":<span class="cov0" title="0">
+                if err := showStatus(ctx, client); err != nil </span><span class="cov0" title="0">{
+                        fmt.Printf("Error: Failed to show status: %v\n", err)
+                        os.Exit(1)
+                }</span>
+        case "list-tuples":<span class="cov0" title="0">
+                filter := ""
+                args := flagSet.Args()
+                if len(args) &gt;= 1 </span><span class="cov0" title="0">{
+                        filter = args[0]
+                }</span>
+                <span class="cov0" title="0">if err := listTuples(ctx, client, filter); err != nil </span><span class="cov0" title="0">{
+                        fmt.Printf("Error: Failed to list tuples: %v\n", err)
+                        os.Exit(1)
+                }</span>
+        case "show-model":<span class="cov0" title="0">
+                if err := showModel(ctx, client); err != nil </span><span class="cov0" title="0">{
+                        fmt.Printf("Error: Failed to show model: %v\n", err)
+                        os.Exit(1)
+                }</span>
+        default:<span class="cov0" title="0">
+                fmt.Printf("Error: Unknown command: %s\n", command)
+                printUsage()
+                os.Exit(1)</span>
+        }
+}
+
+func printUsage() <span class="cov0" title="0">{
+        fmt.Println("OpenFGA Migration Tool - Model-First Migrations")
+        fmt.Println("")
+        fmt.Println("Usage:")
+        fmt.Println("  omg [options] &lt;command&gt;")
+        fmt.Println("")
+        fmt.Println("Model-First Workflow:")
+        fmt.Println("  diff                Show changes between model.fga and current state")
+        fmt.Println("  generate [name]     Auto-generate migration from model.fga changes")
+        fmt.Println("  up                  Apply pending migrations")
+        fmt.Println("  down                Rollback last migration")
+        fmt.Println("  status              Show migration status")
+        fmt.Println("")
+        fmt.Println("Manual Migration Commands:")
+        fmt.Println("  create &lt;name&gt;       Create blank migration file")
+        fmt.Println("")
+        fmt.Println("Store Management:")
+        fmt.Println("  init &lt;name&gt;         Create a new OpenFGA store")
+        fmt.Println("  list-stores         List all OpenFGA stores")
+        fmt.Println("")
+        fmt.Println("Utilities:")
+        fmt.Println("  show-model          Show current authorization model")
+        fmt.Println("  list-tuples [type]  List all tuples (optionally filtered)")
+        fmt.Println("")
+        fmt.Println("Options:")
+        fmt.Println("  -dir string         Directory with migration files (default: migrations)")
+        fmt.Println("  -dburl string       OpenFGA database URL")
+        fmt.Println("")
+        fmt.Println("Database URL format:")
+        fmt.Println("  openfga://store_id@host:port")
+        fmt.Println("")
+        fmt.Println("Environment variables:")
+        fmt.Println("  OPENFGA_DATABASE_URL   - Database URL (alternative to -dburl)")
+        fmt.Println("  OPENFGA_API_URL        - OpenFGA API URL (alternative)")
+        fmt.Println("  OPENFGA_STORE_ID       - OpenFGA Store ID (alternative)")
+        fmt.Println("  OPENFGA_AUTH_METHOD    - Auth method: none, token, client_credentials")
+        fmt.Println("  OPENFGA_API_TOKEN      - API token (if auth_method=token)")
+        fmt.Println("  OPENFGA_CLIENT_ID      - Client ID (if auth_method=client_credentials)")
+        fmt.Println("  OPENFGA_CLIENT_SECRET  - Client secret (if auth_method=client_credentials)")
+        fmt.Println("  OPENFGA_TOKEN_ISSUER   - Token issuer (optional)")
+        fmt.Println("  OPENFGA_TOKEN_AUDIENCE - Token audience (optional)")
+        fmt.Println("")
+        fmt.Println("Typical Workflow:")
+        fmt.Println("  1. Edit model.fga with your changes")
+        fmt.Println("  2. Run 'omg diff' to see what changed")
+        fmt.Println("  3. Run 'omg generate my_feature' to create migration")
+        fmt.Println("  4. Review and edit the generated migration if needed")
+        fmt.Println("  5. Run 'omg up' to apply migrations")
+        fmt.Println("")
+        fmt.Println("Examples:")
+        fmt.Println("  omg diff                     # See model changes")
+        fmt.Println("  omg generate add_files       # Generate migration from model changes")
+        fmt.Println("  omg up                       # Apply migrations")
+        fmt.Println("  omg down                     # Rollback last migration")
+        fmt.Println("  omg status                   # Check migration status")
+}</span>
+
+func initOpenFGAClient() (*omg.Client, error) <span class="cov0" title="0">{
+        var cfg omg.Config
+
+        // Try to parse database URL first
+        if dbURL != "" </span><span class="cov0" title="0">{
+                parsedCfg, err := parseDBURL(dbURL)
+                if err != nil </span><span class="cov0" title="0">{
+                        return nil, fmt.Errorf("invalid database URL: %w", err)
+                }</span>
+                <span class="cov0" title="0">cfg = parsedCfg</span>
+        } else<span class="cov0" title="0"> {
+                // Fall back to environment variables
+                cfg = omg.Config{
+                        ApiURL:        os.Getenv("OPENFGA_API_URL"),
+                        StoreID:       os.Getenv("OPENFGA_STORE_ID"),
+                        AuthMethod:    os.Getenv("OPENFGA_AUTH_METHOD"),
+                        APIToken:      os.Getenv("OPENFGA_API_TOKEN"),
+                        ClientID:      os.Getenv("OPENFGA_CLIENT_ID"),
+                        ClientSecret:  os.Getenv("OPENFGA_CLIENT_SECRET"),
+                        TokenIssuer:   os.Getenv("OPENFGA_TOKEN_ISSUER"),
+                        TokenAudience: os.Getenv("OPENFGA_TOKEN_AUDIENCE"),
+                }
+        }</span>
+
+        <span class="cov0" title="0">return omg.NewClient(cfg)</span>
+}
+
+// parseDBURL parses a database URL in the format:
+// openfga://store_id@host:port
+func parseDBURL(dburl string) (omg.Config, error) <span class="cov0" title="0">{
+        u, err := url.Parse(dburl)
+        if err != nil </span><span class="cov0" title="0">{
+                return omg.Config{}, err
+        }</span>
+
+        <span class="cov0" title="0">if u.Scheme != "openfga" </span><span class="cov0" title="0">{
+                return omg.Config{}, fmt.Errorf("invalid scheme: expected 'openfga', got '%s'", u.Scheme)
+        }</span>
+
+        <span class="cov0" title="0">storeID := u.User.Username()
+        if storeID == "" </span><span class="cov0" title="0">{
+                return omg.Config{}, fmt.Errorf("store ID is required")
+        }</span>
+
+        <span class="cov0" title="0">host := u.Host
+        if host == "" </span><span class="cov0" title="0">{
+                return omg.Config{}, fmt.Errorf("host is required")
+        }</span>
+
+        // Build API URL
+        <span class="cov0" title="0">scheme := "https"
+        if u.Query().Get("tls") == "false" </span><span class="cov0" title="0">{
+                scheme = "http"
+        }</span>
+        <span class="cov0" title="0">apiURL := fmt.Sprintf("%s://%s", scheme, host)
+
+        cfg := omg.Config{
+                ApiURL:  apiURL,
+                StoreID: storeID,
+        }
+
+        // Parse query parameters for auth
+        query := u.Query()
+        if authMethod := query.Get("auth"); authMethod != "" </span><span class="cov0" title="0">{
+                cfg.AuthMethod = authMethod
+        }</span>
+        <span class="cov0" title="0">if token := query.Get("token"); token != "" </span><span class="cov0" title="0">{
+                cfg.APIToken = token
+        }</span>
+        <span class="cov0" title="0">if clientID := query.Get("client_id"); clientID != "" </span><span class="cov0" title="0">{
+                cfg.ClientID = clientID
+        }</span>
+        <span class="cov0" title="0">if clientSecret := query.Get("client_secret"); clientSecret != "" </span><span class="cov0" title="0">{
+                cfg.ClientSecret = clientSecret
+        }</span>
+        <span class="cov0" title="0">if issuer := query.Get("issuer"); issuer != "" </span><span class="cov0" title="0">{
+                cfg.TokenIssuer = issuer
+        }</span>
+        <span class="cov0" title="0">if audience := query.Get("audience"); audience != "" </span><span class="cov0" title="0">{
+                cfg.TokenAudience = audience
+        }</span>
+
+        <span class="cov0" title="0">return cfg, nil</span>
+}
+
+func runUp(ctx context.Context, client *omg.Client) error <span class="cov0" title="0">{
+        tracker := omg.NewTracker(client)
+        migrations := omg.GetAll()
+        applied, err := tracker.GetApplied(ctx)
+        if err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+
+        <span class="cov0" title="0">count := 0
+        for _, m := range migrations </span><span class="cov0" title="0">{
+                if _, exists := applied[m.Version]; exists </span><span class="cov0" title="0">{
+                        continue</span>
+                }
+
+                <span class="cov0" title="0">fmt.Printf("OK  %s  %s\n", m.Version, m.Name)
+
+                if err := m.Up(ctx, client); err != nil </span><span class="cov0" title="0">{
+                        return fmt.Errorf("migration %s failed: %w", m.Version, err)
+                }</span>
+
+                <span class="cov0" title="0">if err := tracker.Record(ctx, m.Version, m.Name); err != nil </span><span class="cov0" title="0">{
+                        return fmt.Errorf("failed to record migration %s: %w", m.Version, err)
+                }</span>
+
+                <span class="cov0" title="0">count++</span>
+        }
+
+        <span class="cov0" title="0">if count == 0 </span><span class="cov0" title="0">{
+                fmt.Println("goose: no migrations to run. current version: up to date")
+        }</span> else<span class="cov0" title="0"> {
+                fmt.Println("\n✓ All migrations applied successfully")
+        }</span>
+
+        <span class="cov0" title="0">return nil</span>
+}
+
+func runDown(ctx context.Context, client *omg.Client) error <span class="cov0" title="0">{
+        tracker := omg.NewTracker(client)
+        migrations := omg.GetAll()
+        applied, err := tracker.GetApplied(ctx)
+        if err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+
+        <span class="cov0" title="0">if len(applied) == 0 </span><span class="cov0" title="0">{
+                fmt.Println("goose: no migrations to roll back")
+                return nil
+        }</span>
+
+        // Find last applied migration
+        <span class="cov0" title="0">var lastMigration *omg.Migration
+        for i := len(migrations) - 1; i &gt;= 0; i-- </span><span class="cov0" title="0">{
+                if _, exists := applied[migrations[i].Version]; exists </span><span class="cov0" title="0">{
+                        lastMigration = &amp;migrations[i]
+                        break</span>
+                }
+        }
+
+        <span class="cov0" title="0">if lastMigration == nil </span><span class="cov0" title="0">{
+                fmt.Println("goose: no migrations to roll back")
+                return nil
+        }</span>
+
+        <span class="cov0" title="0">fmt.Printf("OK  %s  %s\n", lastMigration.Version, lastMigration.Name)
+
+        if err := lastMigration.Down(ctx, client); err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("rollback %s failed: %w", lastMigration.Version, err)
+        }</span>
+
+        <span class="cov0" title="0">if err := tracker.Remove(ctx, lastMigration.Version); err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to remove migration record %s: %w", lastMigration.Version, err)
+        }</span>
+
+        <span class="cov0" title="0">return nil</span>
+}
+
+func showStatus(ctx context.Context, client *omg.Client) error <span class="cov0" title="0">{
+        tracker := omg.NewTracker(client)
+        migrations := omg.GetAll()
+        applied, err := tracker.GetApplied(ctx)
+        if err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+
+        <span class="cov0" title="0">if len(migrations) == 0 </span><span class="cov0" title="0">{
+                fmt.Println("goose: no migrations found")
+                return nil
+        }</span>
+
+        <span class="cov0" title="0">fmt.Printf("goose: status for environment '%s'\n", strings.TrimPrefix(dbURL, "openfga://"))
+        for _, m := range migrations </span><span class="cov0" title="0">{
+                status := "Pending"
+                if info, exists := applied[m.Version]; exists </span><span class="cov0" title="0">{
+                        status = fmt.Sprintf("Applied At: %s", info.AppliedAt.Format("Mon Jan  2 15:04:05 2006"))
+                }</span>
+                <span class="cov0" title="0">fmt.Printf("    %-15s  %-40s  %s\n", m.Version, m.Name, status)</span>
+        }
+
+        <span class="cov0" title="0">return nil</span>
+}
+
+func createMigration(name string) error <span class="cov0" title="0">{
+        timestamp := time.Now().Format("20060102150405")
+        filename := fmt.Sprintf("%s/%s_%s.go", migrationsDir, timestamp, name)
+
+        template := fmt.Sprintf(`package migrations
+
+import (
+        "context"
+
+        "github.com/demetere/omg/pkg"
+)
+
+func init() {
+        omg.Register(omg.Migration{
+                Version: "%s",
+                Name:    "%s",
+                Up:      up_%s,
+                Down:    down_%s,
+        })
+}
+
+func up_%s(ctx context.Context, client *omg.Client) error {
+        // TODO: Implement migration
+        //
+        // Available omg functions:
+        //
+        // MODEL OPERATIONS:
+        // - omg.GetCurrentModel(ctx, client) - Get current model as DSL string
+        //
+        // TUPLE OPERATIONS:
+        // - omg.RenameRelation(ctx, client, objectType, oldRel, newRel) - Rename relation on all tuples
+        // - omg.RenameType(ctx, client, oldType, newType) - Rename object type on all tuples
+        // - omg.CopyRelation(ctx, client, objectType, sourceRel, targetRel) - Copy tuples to new relation
+        // - omg.DeleteRelation(ctx, client, objectType, relation) - Delete all tuples with relation
+        // - omg.MigrateRelationWithTransform(ctx, client, objectType, oldRel, newRel, transform) - Custom transform
+        //
+        // READ OPERATIONS:
+        // - omg.ReadAllTuples(ctx, client, objectType, relation) - Read tuples by type/relation
+        // - omg.CountTuples(ctx, client, objectType, relation) - Count matching tuples
+        //
+        // BATCH OPERATIONS:
+        // - omg.WriteTuplesBatch(ctx, client, tuples) - Write tuples in batches
+        // - omg.DeleteTuplesBatch(ctx, client, tuples) - Delete tuples in batches
+        //
+        // UTILITY:
+        // - omg.BackupTuples(ctx, client) - Backup all tuples before migration
+        // - omg.RestoreTuples(ctx, client, tuples) - Restore tuples from backup
+
+        return nil
+}
+
+func down_%s(ctx context.Context, client *omg.Client) error {
+        // TODO: Implement rollback
+        // Reverse the operations from Up
+
+        return nil
+}
+`, timestamp, name, timestamp, timestamp, timestamp, timestamp)
+
+        if err := os.MkdirAll(migrationsDir, 0755); err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+
+        <span class="cov0" title="0">if err := os.WriteFile(filename, []byte(template), 0644); err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+
+        <span class="cov0" title="0">fmt.Printf("goose: created new file: %s\n", filename)
+        return nil</span>
+}
+
+func listTuples(ctx context.Context, client *omg.Client, filter string) error <span class="cov0" title="0">{
+        req := omg.ReadTuplesRequest{}
+
+        if filter != "" </span><span class="cov0" title="0">{
+                req.Object = filter + ":"
+        }</span>
+
+        <span class="cov0" title="0">tuples, err := client.ReadAllTuples(ctx, req)
+        if err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+
+        <span class="cov0" title="0">fmt.Printf("Found %d tuples:\n\n", len(tuples))
+
+        for _, tuple := range tuples </span><span class="cov0" title="0">{
+                fmt.Printf("%s  %s  %s\n", tuple.User, tuple.Relation, tuple.Object)
+        }</span>
+
+        <span class="cov0" title="0">return nil</span>
+}
+
+func showModel(ctx context.Context, client *omg.Client) error <span class="cov0" title="0">{
+        model, err := client.GetCurrentModel(ctx)
+        if err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+
+        <span class="cov0" title="0">fmt.Println(model)
+
+        return nil</span>
+}
+
+func initStore(storeName string) error <span class="cov0" title="0">{
+        // Get API URL from environment or dbURL
+        apiURL := os.Getenv("OPENFGA_API_URL")
+        if apiURL == "" &amp;&amp; dbURL != "" </span><span class="cov0" title="0">{
+                cfg, err := parseDBURL(dbURL)
+                if err != nil </span><span class="cov0" title="0">{
+                        return fmt.Errorf("invalid database URL: %w", err)
+                }</span>
+                <span class="cov0" title="0">apiURL = cfg.ApiURL</span>
+        }
+
+        <span class="cov0" title="0">if apiURL == "" </span><span class="cov0" title="0">{
+                return fmt.Errorf("OPENFGA_API_URL or -dburl is required")
+        }</span>
+
+        <span class="cov0" title="0">fmt.Printf("Creating OpenFGA store '%s'...\n", storeName)
+
+        storeID, err := omg.CreateStore(apiURL, storeName)
+        if err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+
+        <span class="cov0" title="0">fmt.Printf("\nStore created successfully!\n\n")
+        fmt.Printf("Store ID: %s\n", storeID)
+        fmt.Printf("Store Name: %s\n\n", storeName)
+        fmt.Println("Add to your environment:")
+        fmt.Printf("  export OPENFGA_STORE_ID=%s\n", storeID)
+        fmt.Printf("  export OPENFGA_DATABASE_URL=openfga://%s@%s\n", storeID, strings.TrimPrefix(apiURL, "http://"))
+        fmt.Println("")
+        fmt.Println("Or use with -dburl flag:")
+        fmt.Printf("  omg -dburl openfga://%s@%s up\n", storeID, strings.TrimPrefix(apiURL, "http://"))
+
+        return nil</span>
+}
+
+func listStores() error <span class="cov0" title="0">{
+        // Get API URL from environment or dbURL
+        apiURL := os.Getenv("OPENFGA_API_URL")
+        if apiURL == "" &amp;&amp; dbURL != "" </span><span class="cov0" title="0">{
+                cfg, err := parseDBURL(dbURL)
+                if err != nil </span><span class="cov0" title="0">{
+                        return fmt.Errorf("invalid database URL: %w", err)
+                }</span>
+                <span class="cov0" title="0">apiURL = cfg.ApiURL</span>
+        }
+
+        <span class="cov0" title="0">if apiURL == "" </span><span class="cov0" title="0">{
+                return fmt.Errorf("OPENFGA_API_URL or -dburl is required")
+        }</span>
+
+        <span class="cov0" title="0">stores, err := omg.ListStores(apiURL)
+        if err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+
+        <span class="cov0" title="0">if len(stores) == 0 </span><span class="cov0" title="0">{
+                fmt.Println("No stores found")
+                return nil
+        }</span>
+
+        <span class="cov0" title="0">fmt.Printf("Found %d store(s):\n\n", len(stores))
+        for _, store := range stores </span><span class="cov0" title="0">{
+                fmt.Printf("  ID:   %s\n", store.ID)
+                fmt.Printf("  Name: %s\n\n", store.Name)
+        }</span>
+
+        <span class="cov0" title="0">return nil</span>
+}
+
+func generateMigration(name string) error <span class="cov0" title="0">{
+        fmt.Println("Detecting model changes...")
+
+        // Create client to query OpenFGA
+        client, err := initOpenFGAClient()
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to create client: %w", err)
+        }</span>
+        <span class="cov0" title="0">ctx := context.Background()
+
+        // Load current state from OpenFGA
+        fmt.Println("Querying OpenFGA for current model...")
+        oldState, err := omg.LoadModelStateFromOpenFGA(ctx, client)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to load current model from OpenFGA: %w\nMake sure OpenFGA is running and accessible", err)
+        }</span>
+
+        // Load desired model from file
+        <span class="cov0" title="0">newModelDSL, err := omg.LoadCurrentModel()
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to load model.fga: %w", err)
+        }</span>
+
+        // Parse desired model
+        <span class="cov0" title="0">newModel, err := omg.ParseDSLToModel(newModelDSL)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to parse model.fga: %w", err)
+        }</span>
+
+        // Build desired state
+        <span class="cov0" title="0">newState := omg.BuildModelState(newModel)
+
+        // Detect changes
+        changes := omg.DetectChanges(oldState, newState)
+        if len(changes) == 0 </span><span class="cov0" title="0">{
+                fmt.Println("No changes detected")
+                return nil
+        }</span>
+
+        // Detect potential renames
+        <span class="cov0" title="0">changes = omg.DetectPotentialRenames(changes, oldState, newState)
+
+        // Print detected changes
+        fmt.Printf("\nDetected %d change(s):\n", len(changes))
+        for i, change := range changes </span><span class="cov0" title="0">{
+                fmt.Printf("  %d. %s\n", i+1, change.Details)
+        }</span>
+
+        // Ask for confirmation on potential renames
+        <span class="cov0" title="0">confirmedChanges, err := confirmChanges(changes)
+        if err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+
+        // Generate migration
+        <span class="cov0" title="0">fmt.Println("\nGenerating migration...")
+        filename, err := omg.GenerateMigrationFromChanges(confirmedChanges, name)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to generate migration: %w", err)
+        }</span>
+
+        <span class="cov0" title="0">fmt.Printf("\n✓ Migration created: %s\n", filename)
+        fmt.Println("\nNext steps:")
+        fmt.Println("  1. Review the generated migration file")
+        fmt.Println("  2. Edit if needed (especially for renames)")
+        fmt.Println("  3. Run 'omg up' to apply the migration")
+
+        return nil</span>
+}
+
+func showDiff() error <span class="cov0" title="0">{
+        fmt.Println("Comparing model.fga with OpenFGA...")
+
+        // Create client to query OpenFGA
+        client, err := initOpenFGAClient()
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to create client: %w", err)
+        }</span>
+        <span class="cov0" title="0">ctx := context.Background()
+
+        // Load current state from OpenFGA
+        oldState, err := omg.LoadModelStateFromOpenFGA(ctx, client)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to load current model from OpenFGA: %w\nMake sure OpenFGA is running and accessible", err)
+        }</span>
+
+        // Load desired model from file
+        <span class="cov0" title="0">newModelDSL, err := omg.LoadCurrentModel()
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to load model.fga: %w", err)
+        }</span>
+
+        // Parse desired model
+        <span class="cov0" title="0">newModel, err := omg.ParseDSLToModel(newModelDSL)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to parse model.fga: %w", err)
+        }</span>
+
+        // Build desired state
+        <span class="cov0" title="0">newState := omg.BuildModelState(newModel)
+
+        // Detect changes
+        changes := omg.DetectChanges(oldState, newState)
+        if len(changes) == 0 </span><span class="cov0" title="0">{
+                fmt.Println("\n✓ No changes detected - model.fga matches current state")
+                return nil
+        }</span>
+
+        // Detect potential renames
+        <span class="cov0" title="0">changes = omg.DetectPotentialRenames(changes, oldState, newState)
+
+        // Print changes
+        fmt.Printf("\nDetected %d change(s):\n\n", len(changes))
+        for _, change := range changes </span><span class="cov0" title="0">{
+                symbol := getChangeSymbol(change.Type)
+                fmt.Printf("%s %s\n", symbol, change.Details)
+
+                switch change.Type </span>{
+                case omg.ChangeTypeRenameType, omg.ChangeTypeRenameRelation:<span class="cov0" title="0">
+                        fmt.Printf("    Old: %s\n", change.OldValue)
+                        fmt.Printf("    New: %s\n", change.NewValue)</span>
+                }
+        }
+
+        <span class="cov0" title="0">fmt.Println("\nRun 'omg generate &lt;name&gt;' to create a migration for these changes")
+        return nil</span>
+}
+
+func getChangeSymbol(changeType omg.ChangeType) string <span class="cov0" title="0">{
+        switch changeType </span>{
+        case omg.ChangeTypeAddType, omg.ChangeTypeAddRelation:<span class="cov0" title="0">
+                return "+"</span>
+        case omg.ChangeTypeRemoveType, omg.ChangeTypeRemoveRelation:<span class="cov0" title="0">
+                return "-"</span>
+        case omg.ChangeTypeUpdateRelation:<span class="cov0" title="0">
+                return "~"</span>
+        case omg.ChangeTypeRenameType, omg.ChangeTypeRenameRelation:<span class="cov0" title="0">
+                return "→"</span>
+        default:<span class="cov0" title="0">
+                return "•"</span>
+        }
+}
+
+func confirmChanges(changes []omg.ModelChange) ([]omg.ModelChange, error) <span class="cov0" title="0">{
+        // Process changes with confidence-aware handling
+        var confirmed []omg.ModelChange
+        for _, change := range changes </span><span class="cov0" title="0">{
+                if change.Type == omg.ChangeTypeRenameType || change.Type == omg.ChangeTypeRenameRelation </span><span class="cov0" title="0">{
+                        // Handle based on confidence level
+                        switch change.Confidence </span>{
+                        case omg.ConfidenceHigh:<span class="cov0" title="0">
+                                // High confidence: keep as rename, inform user
+                                fmt.Printf("\n✓ Rename detected: %s -&gt; %s (high confidence)\n", change.OldValue, change.NewValue)
+                                fmt.Println("   Will generate rename migration that preserves tuples.")
+                                confirmed = append(confirmed, change)</span>
+
+                        case omg.ConfidenceMedium:<span class="cov0" title="0">
+                                // Medium confidence: keep as rename but warn user to review
+                                fmt.Printf("\n⚠  Possible rename: %s -&gt; %s (medium confidence - review required)\n", change.OldValue, change.NewValue)
+                                fmt.Println("   Will generate rename migration - review before applying.")
+                                confirmed = append(confirmed, change)</span>
+
+                        case omg.ConfidenceLow:<span class="cov0" title="0">
+                                // Low confidence: keep as rename, generator will create commented code
+                                fmt.Printf("\n⚠  Potential rename: %s -&gt; %s (low confidence)\n", change.OldValue, change.NewValue)
+                                fmt.Println("   Will generate both options - uncomment the rename if confirmed.")
+                                confirmed = append(confirmed, change)</span>
+
+                        default:<span class="cov0" title="0">
+                                // No confidence info (legacy): treat conservatively
+                                fmt.Printf("\n⚠  Detected potential rename: %s -&gt; %s\n", change.OldValue, change.NewValue)
+                                fmt.Println("   Will generate rename migration - review carefully.")
+                                confirmed = append(confirmed, change)</span>
+                        }
+                } else<span class="cov0" title="0"> {
+                        confirmed = append(confirmed, change)
+                }</span>
+        }
+
+        <span class="cov0" title="0">return confirmed, nil</span>
+}
+</pre>
+		
+		<pre class="file" id="file1" style="display: none">package testhelpers
+
+import (
+        "context"
+        "encoding/json"
+        "fmt"
+        "io"
+        "net/http"
+        "strings"
+        "testing"
+
+        "github.com/demetere/omg/pkg"
+        openfgaSdk "github.com/openfga/go-sdk"
+        "github.com/openfga/go-sdk/client"
+        "github.com/stretchr/testify/require"
+        openfgacontainer "github.com/testcontainers/testcontainers-go/modules/openfga"
+)
+
+// SetupOpenFGAContainer starts an OpenFGA container and returns it with a configured client
+func SetupOpenFGAContainer(t *testing.T, ctx context.Context, modelDSL string) (*openfgacontainer.OpenFGAContainer, *omg.Client) <span class="cov0" title="0">{
+        container, err := openfgacontainer.Run(ctx, "openfga/openfga:v1.8.0")
+        require.NoError(t, err)
+
+        httpEndpoint, err := container.HttpEndpoint(ctx)
+        require.NoError(t, err)
+
+        // Create a store using HTTP API
+        storeID, err := createStore(ctx, httpEndpoint, "test-store")
+        require.NoError(t, err)
+
+        // Create our client
+        client, err := omg.NewClient(omg.Config{
+                ApiURL:     httpEndpoint,
+                StoreID:    storeID,
+                AuthMethod: "none",
+        })
+        require.NoError(t, err)
+
+        // Write the model if provided
+        if modelDSL != "" </span><span class="cov0" title="0">{
+                err = WriteModel(ctx, client, modelDSL)
+                require.NoError(t, err)
+        }</span>
+
+        <span class="cov0" title="0">return container, client</span>
+}
+
+func createStore(ctx context.Context, apiURL, name string) (string, error) <span class="cov0" title="0">{
+        reqBody := fmt.Sprintf(`{"name":"%s"}`, name)
+        resp, err := http.Post(apiURL+"/stores", "application/json", strings.NewReader(reqBody))
+        if err != nil </span><span class="cov0" title="0">{
+                return "", err
+        }</span>
+        <span class="cov0" title="0">defer resp.Body.Close()
+
+        body, err := io.ReadAll(resp.Body)
+        if err != nil </span><span class="cov0" title="0">{
+                return "", err
+        }</span>
+
+        <span class="cov0" title="0">var result struct {
+                ID string `json:"id"`
+        }
+        if err := json.Unmarshal(body, &amp;result); err != nil </span><span class="cov0" title="0">{
+                return "", err
+        }</span>
+
+        <span class="cov0" title="0">return result.ID, nil</span>
+}
+
+// WriteModel writes an authorization model for testing
+// This is a simplified version that parses basic DSL
+func WriteModel(ctx context.Context, cl *omg.Client, modelDSL string) error <span class="cov0" title="0">{
+        sdkClient := cl.GetSDKClient()
+
+        // Parse model DSL and create type definitions
+        // For now, this is hardcoded for common test scenarios
+        // In production, you'd use the FGA CLI or a proper DSL parser
+
+        typeDefinitions := parseModelDSL(modelDSL)
+
+        body := client.ClientWriteAuthorizationModelRequest{
+                TypeDefinitions: typeDefinitions,
+                SchemaVersion:   "1.1",
+        }
+
+        _, err := sdkClient.WriteAuthorizationModel(ctx).Body(body).Execute()
+        return err
+}</span>
+
+// parseModelDSL is a simplified DSL parser for testing
+// In production, use the official FGA DSL parser
+func parseModelDSL(dsl string) []openfgaSdk.TypeDefinition <span class="cov0" title="0">{
+        // This is a very basic parser - for testing only
+        // Returns predefined types based on what's in the DSL
+
+        types := []openfgaSdk.TypeDefinition{
+                {Type: "user"},
+        }
+
+        // Add common test types if they appear in the DSL
+        if strings.Contains(dsl, "type document") </span><span class="cov0" title="0">{
+                types = append(types, openfgaSdk.TypeDefinition{
+                        Type: "document",
+                        Relations: &amp;map[string]openfgaSdk.Userset{
+                                "owner":  {This: &amp;map[string]interface{}{}},
+                                "editor": {This: &amp;map[string]interface{}{}},
+                                "viewer": {This: &amp;map[string]interface{}{}},
+                        },
+                        Metadata: &amp;openfgaSdk.Metadata{
+                                Relations: &amp;map[string]openfgaSdk.RelationMetadata{
+                                        "owner":  {DirectlyRelatedUserTypes: &amp;[]openfgaSdk.RelationReference{{Type: "user"}}},
+                                        "editor": {DirectlyRelatedUserTypes: &amp;[]openfgaSdk.RelationReference{{Type: "user"}}},
+                                        "viewer": {DirectlyRelatedUserTypes: &amp;[]openfgaSdk.RelationReference{{Type: "user"}}},
+                                },
+                        },
+                })
+        }</span>
+
+        <span class="cov0" title="0">if strings.Contains(dsl, "type folder") </span><span class="cov0" title="0">{
+                types = append(types, openfgaSdk.TypeDefinition{
+                        Type: "folder",
+                        Relations: &amp;map[string]openfgaSdk.Userset{
+                                "owner":  {This: &amp;map[string]interface{}{}},
+                                "editor": {This: &amp;map[string]interface{}{}},
+                                "viewer": {This: &amp;map[string]interface{}{}},
+                        },
+                        Metadata: &amp;openfgaSdk.Metadata{
+                                Relations: &amp;map[string]openfgaSdk.RelationMetadata{
+                                        "owner":  {DirectlyRelatedUserTypes: &amp;[]openfgaSdk.RelationReference{{Type: "user"}}},
+                                        "editor": {DirectlyRelatedUserTypes: &amp;[]openfgaSdk.RelationReference{{Type: "user"}}},
+                                        "viewer": {DirectlyRelatedUserTypes: &amp;[]openfgaSdk.RelationReference{{Type: "user"}}},
+                                },
+                        },
+                })
+        }</span>
+
+        <span class="cov0" title="0">if strings.Contains(dsl, "type team") </span><span class="cov0" title="0">{
+                types = append(types, createTeamType())
+        }</span>
+
+        <span class="cov0" title="0">if strings.Contains(dsl, "type organization") </span><span class="cov0" title="0">{
+                types = append(types, createOrganizationType())
+        }</span>
+
+        <span class="cov0" title="0">if strings.Contains(dsl, "type migration") </span><span class="cov0" title="0">{
+                types = append(types, openfgaSdk.TypeDefinition{
+                        Type: "system",
+                })
+                types = append(types, openfgaSdk.TypeDefinition{
+                        Type: "migration",
+                        Relations: &amp;map[string]openfgaSdk.Userset{
+                                "applied": {This: &amp;map[string]interface{}{}},
+                        },
+                        Metadata: &amp;openfgaSdk.Metadata{
+                                Relations: &amp;map[string]openfgaSdk.RelationMetadata{
+                                        "applied": {DirectlyRelatedUserTypes: &amp;[]openfgaSdk.RelationReference{{Type: "system"}}},
+                                },
+                        },
+                })
+        }</span>
+
+        <span class="cov0" title="0">return types</span>
+}
+
+func createTeamType() openfgaSdk.TypeDefinition <span class="cov0" title="0">{
+        relations := &amp;map[string]openfgaSdk.Userset{
+                "owner":               {This: &amp;map[string]interface{}{}},
+                "admin":               {This: &amp;map[string]interface{}{}},
+                "member":              {This: &amp;map[string]interface{}{}},
+                "manager":             {This: &amp;map[string]interface{}{}},
+                "employee":            {This: &amp;map[string]interface{}{}},
+                "can_manage":          {This: &amp;map[string]interface{}{}},
+                "can_manage_members":  {This: &amp;map[string]interface{}{}},
+                "deprecated":          {This: &amp;map[string]interface{}{}},
+        }
+
+        metadata := &amp;openfgaSdk.Metadata{
+                Relations: &amp;map[string]openfgaSdk.RelationMetadata{},
+        }
+        for rel := range *relations </span><span class="cov0" title="0">{
+                (*metadata.Relations)[rel] = openfgaSdk.RelationMetadata{
+                        DirectlyRelatedUserTypes: &amp;[]openfgaSdk.RelationReference{{Type: "user"}},
+                }
+        }</span>
+
+        <span class="cov0" title="0">return openfgaSdk.TypeDefinition{
+                Type:      "team",
+                Relations: relations,
+                Metadata:  metadata,
+        }</span>
+}
+
+func createOrganizationType() openfgaSdk.TypeDefinition <span class="cov0" title="0">{
+        relations := &amp;map[string]openfgaSdk.Userset{
+                "owner":    {This: &amp;map[string]interface{}{}},
+                "admin":    {This: &amp;map[string]interface{}{}},
+                "member":   {This: &amp;map[string]interface{}{}},
+                "employee": {This: &amp;map[string]interface{}{}},
+        }
+
+        metadata := &amp;openfgaSdk.Metadata{
+                Relations: &amp;map[string]openfgaSdk.RelationMetadata{},
+        }
+        for rel := range *relations </span><span class="cov0" title="0">{
+                (*metadata.Relations)[rel] = openfgaSdk.RelationMetadata{
+                        DirectlyRelatedUserTypes: &amp;[]openfgaSdk.RelationReference{{Type: "user"}},
+                }
+        }</span>
+
+        <span class="cov0" title="0">return openfgaSdk.TypeDefinition{
+                Type:      "organization",
+                Relations: relations,
+                Metadata:  metadata,
+        }</span>
+}
+</pre>
+		
+		<pre class="file" id="file2" style="display: none">package migrations
+
+import (
+        "context"
+
+        _ "github.com/demetere/omg/pkg"
+        _ "github.com/demetere/omg/pkg"
+        "github.com/demetere/omg/pkg"
+)
+
+// This is an example migration file showing common patterns
+// Delete this file or comment out the init() when creating actual migrations
+
+func init() {<span class="cov0" title="0">
+        // Uncomment to register this example
+        // omg.Register(omg.Migration{
+        //         Version: "00000000000000",
+        //         Name:    "example_migration",
+        //         Up:      up_example,
+        //         Down:    down_example,
+        // })
+}</span>
+
+func up_example(ctx context.Context, client *omg.Client) error <span class="cov0" title="0">{
+        // ============================================================================
+        // EXAMPLE 1: Rename relation with tuple migration
+        // ============================================================================
+        // Use case: You want to completely replace old relation name with new one
+        /*
+                // Step 1: Copy tuples from old to new relation
+                if err := omg.CopyRelation(ctx, client, "team", "can_manage_members", "can_manage"); err != nil {
+                        return err
+                }
+
+                // Step 2: Wait for application to deploy with new relation name support
+
+                // Step 3: Delete old tuples (run this in a separate migration after deploy)
+                if err := omg.DeleteRelation(ctx, client, "team", "can_manage_members"); err != nil {
+                        return err
+                }
+        */
+
+        // ============================================================================
+        // EXAMPLE 2: Rename object type
+        // ============================================================================
+        // Use case: Renaming team -&gt; organization
+        /*
+                // Step 1: Migrate all tuples from old type to new type
+                if err := omg.RenameType(ctx, client, "team", "organization"); err != nil {
+                        return err
+                }
+
+                // Note: This only migrates tuples. You still need to:
+                // 1. Deploy new authorization model with new type
+                // 2. Update application code to use new type
+        */
+
+        // ============================================================================
+        // EXAMPLE 3: Copy relation (backward compatible)
+        // ============================================================================
+        // Use case: Add new relation but keep old one working during transition
+        /*
+                // Copy tuples to new relation name
+                if err := omg.CopyRelation(ctx, client, "team", "can_manage_members", "can_manage"); err != nil {
+                        return err
+                }
+
+                // Now both relations exist
+                // Application can support both during transition period
+                // Remove old relation in future migration
+        */
+
+        // ============================================================================
+        // EXAMPLE 4: Custom transformation
+        // ============================================================================
+        // Use case: You need to transform tuples in a custom way
+        /*
+                transform := func(t openfga.Tuple) (openfga.Tuple, error) {
+                        // Example: Change user format from "user:123" to "user:UUID"
+                        // Or: Migrate team memberships to organization memberships
+                        return openfga.Tuple{
+                                User:     t.User,
+                                Relation: "member", // Change relation
+                                Object:   strings.Replace(t.Object, "team:", "organization:", 1), // Change object type
+                        }, nil
+                }
+
+                if err := omg.MigrateRelationWithTransform(
+                        ctx, client, "team", "member", "member", transform,
+                ); err != nil {
+                        return err
+                }
+        */
+
+        // ============================================================================
+        // EXAMPLE 5: Safe migration with backup
+        // ============================================================================
+        // Use case: You want to backup before making changes
+        /*
+                // Backup all tuples
+                backup, err := omg.BackupTuples(ctx, client)
+                if err != nil {
+                        return err
+                }
+
+                // Perform migration
+                if err := omg.RenameRelation(ctx, client, "team", "old_relation", "new_relation"); err != nil {
+                        // Restore from backup on error
+                        _ = omg.RestoreTuples(ctx, client, backup)
+                        return err
+                }
+        */
+
+        // ============================================================================
+        // EXAMPLE 6: Delete deprecated relation
+        // ============================================================================
+        // Use case: Remove old relation after migration period
+        /*
+                // Count tuples before deletion (for logging)
+                count, err := omg.CountTuples(ctx, client, "team", "deprecated_relation")
+                if err != nil {
+                        return err
+                }
+
+                fmt.Printf("Deleting %d tuples with deprecated_relation\n", count)
+
+                // Delete all tuples with this relation
+                if err := omg.DeleteRelation(ctx, client, "team", "deprecated_relation"); err != nil {
+                        return err
+                }
+        */
+
+        return nil
+}</span>
+
+func down_example(ctx context.Context, client *omg.Client) error <span class="cov0" title="0">{
+        // Rollback operations (reverse of Up)
+        // Example: If Up renamed "can_manage_members" -&gt; "can_manage"
+        // Then Down should rename "can_manage" -&gt; "can_manage_members"
+
+        /*
+                if err := omg.RenameRelation(ctx, client, "team", "can_manage", "can_manage_members"); err != nil {
+                        return err
+                }
+        */
+
+        return nil
+}</span>
+</pre>
+		
+		<pre class="file" id="file3" style="display: none">package omg
+
+import (
+        "bytes"
+        "context"
+        "encoding/json"
+        "fmt"
+        "io"
+        "net/http"
+        "strings"
+
+        openfgaSdk "github.com/openfga/go-sdk"
+        "github.com/openfga/go-sdk/client"
+        "github.com/openfga/go-sdk/credentials"
+)
+
+// Client wraps the OpenFGA SDK client with convenient methods
+type Client struct {
+        sdk     *client.OpenFgaClient
+        storeID string
+}
+
+// Config holds OpenFGA client configuration
+type Config struct {
+        ApiURL        string
+        StoreID       string
+        AuthMethod    string // "none", "token", or "client_credentials"
+        APIToken      string
+        ClientID      string
+        ClientSecret  string
+        TokenIssuer   string
+        TokenAudience string
+}
+
+// NewClient creates a new OpenFGA client from configuration
+func NewClient(cfg Config) (*Client, error) <span class="cov8" title="1">{
+        if cfg.ApiURL == "" </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("OPENFGA_API_URL is required")
+        }</span>
+        <span class="cov8" title="1">if cfg.StoreID == "" </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("OPENFGA_STORE_ID is required")
+        }</span>
+
+        <span class="cov8" title="1">configuration := &amp;client.ClientConfiguration{
+                ApiUrl:  cfg.ApiURL,
+                StoreId: cfg.StoreID,
+        }
+
+        // Configure authentication
+        switch cfg.AuthMethod </span>{
+        case "token":<span class="cov0" title="0">
+                if cfg.APIToken == "" </span><span class="cov0" title="0">{
+                        return nil, fmt.Errorf("OPENFGA_API_TOKEN is required when auth method is 'token'")
+                }</span>
+                <span class="cov0" title="0">configuration.Credentials = &amp;credentials.Credentials{
+                        Method: credentials.CredentialsMethodApiToken,
+                        Config: &amp;credentials.Config{
+                                ApiToken: cfg.APIToken,
+                        },
+                }</span>
+        case "client_credentials":<span class="cov0" title="0">
+                if cfg.ClientID == "" || cfg.ClientSecret == "" </span><span class="cov0" title="0">{
+                        return nil, fmt.Errorf("OPENFGA_CLIENT_ID and OPENFGA_CLIENT_SECRET are required for client_credentials auth")
+                }</span>
+                <span class="cov0" title="0">configuration.Credentials = &amp;credentials.Credentials{
+                        Method: credentials.CredentialsMethodClientCredentials,
+                        Config: &amp;credentials.Config{
+                                ClientCredentialsClientId:       cfg.ClientID,
+                                ClientCredentialsClientSecret:   cfg.ClientSecret,
+                                ClientCredentialsApiTokenIssuer: cfg.TokenIssuer,
+                                ClientCredentialsApiAudience:    cfg.TokenAudience,
+                        },
+                }</span>
+        case "none", "":<span class="cov8" title="1"></span>
+                // No authentication
+        default:<span class="cov0" title="0">
+                return nil, fmt.Errorf("unknown auth method: %s", cfg.AuthMethod)</span>
+        }
+
+        <span class="cov8" title="1">sdkClient, err := client.NewSdkClient(configuration)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("failed to create OpenFGA client: %w", err)
+        }</span>
+
+        <span class="cov8" title="1">return &amp;Client{
+                sdk:     sdkClient,
+                storeID: cfg.StoreID,
+        }, nil</span>
+}
+
+// Tuple represents an OpenFGA relationship tuple
+type Tuple struct {
+        User     string
+        Relation string
+        Object   string
+}
+
+// ReadTuplesRequest defines parameters for reading tuples
+type ReadTuplesRequest struct {
+        User     string
+        Relation string
+        Object   string
+}
+
+// WriteTuple writes a single tuple
+func (c *Client) WriteTuple(ctx context.Context, tuple Tuple) error <span class="cov8" title="1">{
+        body := client.ClientWriteRequest{
+                Writes: []openfgaSdk.TupleKey{
+                        {
+                                User:     tuple.User,
+                                Relation: tuple.Relation,
+                                Object:   tuple.Object,
+                        },
+                },
+        }
+
+        _, err := c.sdk.Write(ctx).Body(body).Execute()
+        return err
+}</span>
+
+// WriteTuples writes multiple tuples in a single request
+func (c *Client) WriteTuples(ctx context.Context, tuples []Tuple) error <span class="cov8" title="1">{
+        if len(tuples) == 0 </span><span class="cov0" title="0">{
+                return nil
+        }</span>
+
+        <span class="cov8" title="1">keys := make([]openfgaSdk.TupleKey, len(tuples))
+        for i, tuple := range tuples </span><span class="cov8" title="1">{
+                keys[i] = openfgaSdk.TupleKey{
+                        User:     tuple.User,
+                        Relation: tuple.Relation,
+                        Object:   tuple.Object,
+                }
+        }</span>
+
+        <span class="cov8" title="1">body := client.ClientWriteRequest{
+                Writes: keys,
+        }
+
+        _, err := c.sdk.Write(ctx).Body(body).Execute()
+        return err</span>
+}
+
+// DeleteTuple deletes a single tuple
+func (c *Client) DeleteTuple(ctx context.Context, tuple Tuple) error <span class="cov8" title="1">{
+        body := client.ClientWriteRequest{
+                Deletes: []openfgaSdk.TupleKeyWithoutCondition{
+                        {
+                                User:     tuple.User,
+                                Relation: tuple.Relation,
+                                Object:   tuple.Object,
+                        },
+                },
+        }
+
+        _, err := c.sdk.Write(ctx).Body(body).Execute()
+        return err
+}</span>
+
+// DeleteTuples deletes multiple tuples in a single request
+func (c *Client) DeleteTuples(ctx context.Context, tuples []Tuple) error <span class="cov8" title="1">{
+        if len(tuples) == 0 </span><span class="cov0" title="0">{
+                return nil
+        }</span>
+
+        <span class="cov8" title="1">keys := make([]openfgaSdk.TupleKeyWithoutCondition, len(tuples))
+        for i, tuple := range tuples </span><span class="cov8" title="1">{
+                keys[i] = openfgaSdk.TupleKeyWithoutCondition{
+                        User:     tuple.User,
+                        Relation: tuple.Relation,
+                        Object:   tuple.Object,
+                }
+        }</span>
+
+        <span class="cov8" title="1">body := client.ClientWriteRequest{
+                Deletes: keys,
+        }
+
+        _, err := c.sdk.Write(ctx).Body(body).Execute()
+        return err</span>
+}
+
+// ReadAllTuples reads all tuples matching the request parameters
+// Use empty strings to match all values for that parameter
+// Note: OpenFGA API requires at least an object type prefix when filtering
+func (c *Client) ReadAllTuples(ctx context.Context, req ReadTuplesRequest) ([]Tuple, error) <span class="cov8" title="1">{
+        var allTuples []Tuple
+        continuationToken := ""
+
+        for </span><span class="cov8" title="1">{
+                body := client.ClientReadRequest{}
+
+                // OpenFGA requires tuple_key to have at least object type if any field is set
+                // If only user/relation is set without object, we need to provide empty object prefix
+                hasFilter := req.User != "" || req.Relation != "" || req.Object != ""
+
+                if hasFilter </span><span class="cov8" title="1">{
+                        // OpenFGA API requires object type when filtering by user or relation
+                        // If we don't have an object filter, or if object is just a type prefix ending in ":"
+                        // we need to filter client-side
+                        objectIsTypeOnly := req.Object != "" &amp;&amp; req.Object[len(req.Object)-1] == ':'
+
+                        if req.Object == "" &amp;&amp; (req.User != "" || req.Relation != "") </span><span class="cov8" title="1">{
+                                return c.readAndFilter(ctx, req)
+                        }</span>
+
+                        <span class="cov8" title="1">if objectIsTypeOnly </span><span class="cov8" title="1">{
+                                // Filter by object type prefix client-side
+                                return c.readAndFilterByType(ctx, req)
+                        }</span>
+
+                        // Set filters
+                        <span class="cov8" title="1">if req.User != "" </span><span class="cov0" title="0">{
+                                body.User = openfgaSdk.PtrString(req.User)
+                        }</span>
+                        <span class="cov8" title="1">if req.Relation != "" </span><span class="cov0" title="0">{
+                                body.Relation = openfgaSdk.PtrString(req.Relation)
+                        }</span>
+                        <span class="cov8" title="1">if req.Object != "" </span><span class="cov8" title="1">{
+                                body.Object = openfgaSdk.PtrString(req.Object)
+                        }</span>
+                }
+
+                <span class="cov8" title="1">options := client.ClientReadOptions{}
+                if continuationToken != "" </span><span class="cov0" title="0">{
+                        options.ContinuationToken = openfgaSdk.PtrString(continuationToken)
+                }</span>
+
+                <span class="cov8" title="1">response, err := c.sdk.Read(ctx).Body(body).Options(options).Execute()
+                if err != nil </span><span class="cov0" title="0">{
+                        return nil, fmt.Errorf("failed to read tuples: %w", err)
+                }</span>
+
+                // Convert SDK tuples to our Tuple type
+                <span class="cov8" title="1">for _, t := range response.GetTuples() </span><span class="cov8" title="1">{
+                        key := t.GetKey()
+                        allTuples = append(allTuples, Tuple{
+                                User:     key.GetUser(),
+                                Relation: key.GetRelation(),
+                                Object:   key.GetObject(),
+                        })
+                }</span>
+
+                // Check if there are more pages
+                <span class="cov8" title="1">continuationToken = response.GetContinuationToken()
+                if continuationToken == "" </span><span class="cov8" title="1">{
+                        break</span>
+                }
+        }
+
+        <span class="cov8" title="1">return allTuples, nil</span>
+}
+
+// GetCurrentModel retrieves the current authorization model as DSL string
+func (c *Client) GetCurrentModel(ctx context.Context) (string, error) <span class="cov0" title="0">{
+        response, err := c.sdk.ReadLatestAuthorizationModel(ctx).Execute()
+        if err != nil </span><span class="cov0" title="0">{
+                return "", fmt.Errorf("failed to read authorization model: %w", err)
+        }</span>
+
+        <span class="cov0" title="0">model := response.GetAuthorizationModel()
+
+        // Convert model to DSL format
+        dsl := formatModelAsDSL(model)
+        return dsl, nil</span>
+}
+
+// formatModelAsDSL converts an authorization model to DSL format
+func formatModelAsDSL(model openfgaSdk.AuthorizationModel) string <span class="cov0" title="0">{
+        // This is a simplified DSL formatter
+        // For production, you might want to use the official FGA CLI's formatter
+        var dsl string
+
+        for _, typeDef := range model.GetTypeDefinitions() </span><span class="cov0" title="0">{
+                dsl += fmt.Sprintf("type %s\n", typeDef.GetType())
+
+                relations := typeDef.GetRelations()
+                if len(relations) &gt; 0 </span><span class="cov0" title="0">{
+                        dsl += "  relations\n"
+                        for relName := range relations </span><span class="cov0" title="0">{
+                                dsl += fmt.Sprintf("    define %s: [user]\n", relName)
+                        }</span>
+                }
+                <span class="cov0" title="0">dsl += "\n"</span>
+        }
+
+        <span class="cov0" title="0">return dsl</span>
+}
+
+// WriteAuthorizationModel writes a new authorization model
+// Note: This requires the model in the correct format
+func (c *Client) WriteAuthorizationModel(ctx context.Context, model openfgaSdk.AuthorizationModel) error <span class="cov0" title="0">{
+        body := client.ClientWriteAuthorizationModelRequest{
+                TypeDefinitions: model.TypeDefinitions,
+                SchemaVersion:   model.SchemaVersion,
+        }
+
+        _, err := c.sdk.WriteAuthorizationModel(ctx).Body(body).Execute()
+        return err
+}</span>
+
+// GetCurrentAuthorizationModel retrieves the current authorization model from OpenFGA
+func (c *Client) GetCurrentAuthorizationModel(ctx context.Context) (openfgaSdk.AuthorizationModel, error) <span class="cov8" title="1">{
+        response, err := c.sdk.ReadLatestAuthorizationModel(ctx).Execute()
+        if err != nil </span><span class="cov0" title="0">{
+                return openfgaSdk.AuthorizationModel{}, fmt.Errorf("failed to read authorization model: %w", err)
+        }</span>
+
+        <span class="cov8" title="1">return response.GetAuthorizationModel(), nil</span>
+}
+
+// GetStoreID returns the store ID
+func (c *Client) GetStoreID() string <span class="cov0" title="0">{
+        return c.storeID
+}</span>
+
+// GetSDKClient returns the underlying SDK client (for testing)
+func (c *Client) GetSDKClient() *client.OpenFgaClient <span class="cov8" title="1">{
+        return c.sdk
+}</span>
+
+// readAndFilter reads all tuples and filters client-side
+// Used when OpenFGA API constraints don't allow server-side filtering
+func (c *Client) readAndFilter(ctx context.Context, req ReadTuplesRequest) ([]Tuple, error) <span class="cov8" title="1">{
+        var allTuples []Tuple
+        continuationToken := ""
+
+        // Read all tuples without any filters (direct API call)
+        for </span><span class="cov8" title="1">{
+                body := client.ClientReadRequest{}
+
+                options := client.ClientReadOptions{}
+                if continuationToken != "" </span><span class="cov8" title="1">{
+                        options.ContinuationToken = openfgaSdk.PtrString(continuationToken)
+                }</span>
+
+                <span class="cov8" title="1">response, err := c.sdk.Read(ctx).Body(body).Options(options).Execute()
+                if err != nil </span><span class="cov0" title="0">{
+                        return nil, fmt.Errorf("failed to read tuples: %w", err)
+                }</span>
+
+                // Convert SDK tuples to our Tuple type
+                <span class="cov8" title="1">for _, t := range response.GetTuples() </span><span class="cov8" title="1">{
+                        key := t.GetKey()
+                        allTuples = append(allTuples, Tuple{
+                                User:     key.GetUser(),
+                                Relation: key.GetRelation(),
+                                Object:   key.GetObject(),
+                        })
+                }</span>
+
+                // Check if there are more pages
+                <span class="cov8" title="1">continuationToken = response.GetContinuationToken()
+                if continuationToken == "" </span><span class="cov8" title="1">{
+                        break</span>
+                }
+        }
+
+        // Filter client-side
+        <span class="cov8" title="1">var filtered []Tuple
+        for _, tuple := range allTuples </span><span class="cov8" title="1">{
+                match := true
+
+                if req.User != "" &amp;&amp; tuple.User != req.User </span><span class="cov8" title="1">{
+                        match = false
+                }</span>
+                <span class="cov8" title="1">if req.Relation != "" &amp;&amp; tuple.Relation != req.Relation </span><span class="cov8" title="1">{
+                        match = false
+                }</span>
+                <span class="cov8" title="1">if req.Object != "" &amp;&amp; tuple.Object != req.Object </span><span class="cov0" title="0">{
+                        match = false
+                }</span>
+
+                <span class="cov8" title="1">if match </span><span class="cov8" title="1">{
+                        filtered = append(filtered, tuple)
+                }</span>
+        }
+
+        <span class="cov8" title="1">return filtered, nil</span>
+}
+
+// readAndFilterByType reads all tuples and filters by object type prefix
+func (c *Client) readAndFilterByType(ctx context.Context, req ReadTuplesRequest) ([]Tuple, error) <span class="cov8" title="1">{
+        // Read all tuples
+        allTuples, err := c.readAndFilter(ctx, ReadTuplesRequest{})
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+
+        // Filter by object type prefix (e.g., "document:")
+        <span class="cov8" title="1">var filtered []Tuple
+        for _, tuple := range allTuples </span><span class="cov8" title="1">{
+                // Check if object starts with the type prefix
+                if strings.HasPrefix(tuple.Object, req.Object) </span><span class="cov8" title="1">{
+                        // Also filter by user/relation if specified
+                        match := true
+                        if req.User != "" &amp;&amp; tuple.User != req.User </span><span class="cov0" title="0">{
+                                match = false
+                        }</span>
+                        <span class="cov8" title="1">if req.Relation != "" &amp;&amp; tuple.Relation != req.Relation </span><span class="cov8" title="1">{
+                                match = false
+                        }</span>
+                        <span class="cov8" title="1">if match </span><span class="cov8" title="1">{
+                                filtered = append(filtered, tuple)
+                        }</span>
+                }
+        }
+
+        <span class="cov8" title="1">return filtered, nil</span>
+}
+
+// CreateStore creates a new OpenFGA store
+// Returns the store ID
+func CreateStore(apiURL, storeName string) (string, error) <span class="cov0" title="0">{
+        reqBody := map[string]string{"name": storeName}
+        jsonData, err := json.Marshal(reqBody)
+        if err != nil </span><span class="cov0" title="0">{
+                return "", fmt.Errorf("failed to marshal request: %w", err)
+        }</span>
+
+        <span class="cov0" title="0">resp, err := http.Post(apiURL+"/stores", "application/json", bytes.NewBuffer(jsonData))
+        if err != nil </span><span class="cov0" title="0">{
+                return "", fmt.Errorf("failed to create store: %w", err)
+        }</span>
+        <span class="cov0" title="0">defer resp.Body.Close()
+
+        if resp.StatusCode != http.StatusCreated &amp;&amp; resp.StatusCode != http.StatusOK </span><span class="cov0" title="0">{
+                body, _ := io.ReadAll(resp.Body)
+                return "", fmt.Errorf("failed to create store: status %d, body: %s", resp.StatusCode, string(body))
+        }</span>
+
+        <span class="cov0" title="0">var result struct {
+                ID   string `json:"id"`
+                Name string `json:"name"`
+        }
+
+        if err := json.NewDecoder(resp.Body).Decode(&amp;result); err != nil </span><span class="cov0" title="0">{
+                return "", fmt.Errorf("failed to decode response: %w", err)
+        }</span>
+
+        <span class="cov0" title="0">return result.ID, nil</span>
+}
+
+// Store represents an OpenFGA store
+type Store struct {
+        ID   string
+        Name string
+}
+
+// ListStores lists all stores in the OpenFGA instance
+func ListStores(apiURL string) ([]Store, error) <span class="cov0" title="0">{
+        resp, err := http.Get(apiURL + "/stores")
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("failed to list stores: %w", err)
+        }</span>
+        <span class="cov0" title="0">defer resp.Body.Close()
+
+        if resp.StatusCode != http.StatusOK </span><span class="cov0" title="0">{
+                body, _ := io.ReadAll(resp.Body)
+                return nil, fmt.Errorf("failed to list stores: status %d, body: %s", resp.StatusCode, string(body))
+        }</span>
+
+        <span class="cov0" title="0">var result struct {
+                Stores []struct {
+                        ID   string `json:"id"`
+                        Name string `json:"name"`
+                } `json:"stores"`
+        }
+
+        if err := json.NewDecoder(resp.Body).Decode(&amp;result); err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("failed to decode response: %w", err)
+        }</span>
+
+        // Convert to our Store type
+        <span class="cov0" title="0">stores := make([]Store, len(result.Stores))
+        for i, s := range result.Stores </span><span class="cov0" title="0">{
+                stores[i] = Store{ID: s.ID, Name: s.Name}
+        }</span>
+
+        <span class="cov0" title="0">return stores, nil</span>
+}
+
+// StoreExists checks if a store with the given ID exists
+func StoreExists(apiURL, storeID string) (bool, error) <span class="cov0" title="0">{
+        resp, err := http.Get(fmt.Sprintf("%s/stores/%s", apiURL, storeID))
+        if err != nil </span><span class="cov0" title="0">{
+                return false, fmt.Errorf("failed to check store: %w", err)
+        }</span>
+        <span class="cov0" title="0">defer resp.Body.Close()
+
+        if resp.StatusCode == http.StatusOK </span><span class="cov0" title="0">{
+                return true, nil
+        }</span>
+        <span class="cov0" title="0">if resp.StatusCode == http.StatusNotFound </span><span class="cov0" title="0">{
+                return false, nil
+        }</span>
+
+        <span class="cov0" title="0">body, _ := io.ReadAll(resp.Body)
+        return false, fmt.Errorf("unexpected status checking store: %d, body: %s", resp.StatusCode, string(body))</span>
+}
+</pre>
+		
+		<pre class="file" id="file4" style="display: none">package omg
+
+import (
+        "context"
+        "fmt"
+        "strings"
+
+        openfgaSdk "github.com/openfga/go-sdk"
+)
+
+const batchSize = 100
+
+// TransformFunc is a function that transforms a tuple
+type TransformFunc func(tuple Tuple) (Tuple, error)
+
+// MODEL OPERATIONS
+
+// GetCurrentModel retrieves the current authorization model as DSL string
+func GetCurrentModel(ctx context.Context, client *Client) (string, error) <span class="cov0" title="0">{
+        return client.GetCurrentModel(ctx)
+}</span>
+
+// ApplyModelFromDSL parses and applies an authorization model from DSL string
+// Example DSL:
+//
+//        model
+//          schema 1.1
+//
+//        type user
+//
+//        type file
+//          relations
+//            define owner: [user]
+//            define can_modify: [user] or owner
+func ApplyModelFromDSL(ctx context.Context, client *Client, dsl string) error <span class="cov0" title="0">{
+        fmt.Println("Applying authorization model from DSL...")
+        model, err := parseDSLToModel(dsl)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to parse DSL: %w", err)
+        }</span>
+
+        <span class="cov0" title="0">if err := client.WriteAuthorizationModel(ctx, model); err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to write model: %w", err)
+        }</span>
+
+        <span class="cov0" title="0">fmt.Println("Model applied successfully")
+        return nil</span>
+}
+
+// ApplyModelFromFile reads a DSL file and applies the authorization model
+func ApplyModelFromFile(ctx context.Context, client *Client, filePath string) error <span class="cov0" title="0">{
+        fmt.Printf("Loading model from file: %s\n", filePath)
+
+        content, err := readFile(filePath)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to read file: %w", err)
+        }</span>
+
+        <span class="cov0" title="0">return ApplyModelFromDSL(ctx, client, string(content))</span>
+}
+
+// CompareModels compares two models and returns a description of differences
+func CompareModels(ctx context.Context, client *Client, newDSL string) (string, error) <span class="cov0" title="0">{
+        currentDSL, err := client.GetCurrentModel(ctx)
+        if err != nil </span><span class="cov0" title="0">{
+                return "", fmt.Errorf("failed to get current model: %w", err)
+        }</span>
+
+        // Parse both models
+        <span class="cov0" title="0">currentModel, err := parseDSLToModel(currentDSL)
+        if err != nil </span><span class="cov0" title="0">{
+                return "", fmt.Errorf("failed to parse current model: %w", err)
+        }</span>
+
+        <span class="cov0" title="0">newModel, err := parseDSLToModel(newDSL)
+        if err != nil </span><span class="cov0" title="0">{
+                return "", fmt.Errorf("failed to parse new model: %w", err)
+        }</span>
+
+        // Generate diff
+        <span class="cov0" title="0">diff := generateModelDiff(currentModel, newModel)
+        return diff, nil</span>
+}
+
+// TUPLE OPERATIONS
+
+// RenameRelation renames a relation on all tuples of a specific object type
+// Example: RenameRelation(ctx, client, "team", "can_manage_members", "can_manage")
+func RenameRelation(ctx context.Context, client *Client, objectType, oldRelation, newRelation string) error <span class="cov8" title="1">{
+        fmt.Printf("Renaming relation %s -&gt; %s on type %s\n", oldRelation, newRelation, objectType)
+
+        // Read all tuples with old relation
+        tuples, err := ReadAllTuples(ctx, client, objectType, oldRelation)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to read tuples: %w", err)
+        }</span>
+
+        <span class="cov8" title="1">if len(tuples) == 0 </span><span class="cov0" title="0">{
+                fmt.Println("No tuples found to rename")
+                return nil
+        }</span>
+
+        <span class="cov8" title="1">fmt.Printf("Found %d tuples to rename\n", len(tuples))
+
+        // Create new tuples with new relation
+        var newTuples []Tuple
+        for _, t := range tuples </span><span class="cov8" title="1">{
+                newTuples = append(newTuples, Tuple{
+                        User:     t.User,
+                        Relation: newRelation,
+                        Object:   t.Object,
+                })
+        }</span>
+
+        // Write new tuples
+        <span class="cov8" title="1">if err := WriteTuplesBatch(ctx, client, newTuples); err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to write new tuples: %w", err)
+        }</span>
+
+        // Delete old tuples
+        <span class="cov8" title="1">if err := DeleteTuplesBatch(ctx, client, tuples); err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to delete old tuples: %w", err)
+        }</span>
+
+        <span class="cov8" title="1">fmt.Println("Relation rename completed")
+        return nil</span>
+}
+
+// RenameType renames an object type on all tuples
+// Example: RenameType(ctx, client, "team", "organization")
+func RenameType(ctx context.Context, client *Client, oldType, newType string) error <span class="cov8" title="1">{
+        fmt.Printf("Renaming type %s -&gt; %s\n", oldType, newType)
+
+        // Read all tuples for old type
+        tuples, err := ReadAllTuples(ctx, client, oldType, "")
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to read tuples: %w", err)
+        }</span>
+
+        <span class="cov8" title="1">if len(tuples) == 0 </span><span class="cov0" title="0">{
+                fmt.Println("No tuples found to rename")
+                return nil
+        }</span>
+
+        <span class="cov8" title="1">fmt.Printf("Found %d tuples to rename\n", len(tuples))
+
+        // Create new tuples with new type
+        var newTuples []Tuple
+        for _, t := range tuples </span><span class="cov8" title="1">{
+                // Replace type in object: "team:123" -&gt; "organization:123"
+                newObject := strings.Replace(t.Object, oldType+":", newType+":", 1)
+                newTuples = append(newTuples, Tuple{
+                        User:     t.User,
+                        Relation: t.Relation,
+                        Object:   newObject,
+                })
+        }</span>
+
+        // Write new tuples
+        <span class="cov8" title="1">if err := WriteTuplesBatch(ctx, client, newTuples); err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to write new tuples: %w", err)
+        }</span>
+
+        // Delete old tuples
+        <span class="cov8" title="1">if err := DeleteTuplesBatch(ctx, client, tuples); err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to delete old tuples: %w", err)
+        }</span>
+
+        <span class="cov8" title="1">fmt.Println("Type rename completed")
+        return nil</span>
+}
+
+// CopyRelation copies tuples from one relation to another
+// Example: CopyRelation(ctx, client, "team", "can_manage_members", "can_manage")
+func CopyRelation(ctx context.Context, client *Client, objectType, sourceRelation, targetRelation string) error <span class="cov8" title="1">{
+        fmt.Printf("Copying relation %s -&gt; %s on type %s\n", sourceRelation, targetRelation, objectType)
+
+        // Read all tuples with source relation
+        tuples, err := ReadAllTuples(ctx, client, objectType, sourceRelation)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to read tuples: %w", err)
+        }</span>
+
+        <span class="cov8" title="1">if len(tuples) == 0 </span><span class="cov0" title="0">{
+                fmt.Println("No tuples found to copy")
+                return nil
+        }</span>
+
+        <span class="cov8" title="1">fmt.Printf("Found %d tuples to copy\n", len(tuples))
+
+        // Create new tuples with target relation
+        var newTuples []Tuple
+        for _, t := range tuples </span><span class="cov8" title="1">{
+                newTuples = append(newTuples, Tuple{
+                        User:     t.User,
+                        Relation: targetRelation,
+                        Object:   t.Object,
+                })
+        }</span>
+
+        // Write new tuples
+        <span class="cov8" title="1">if err := WriteTuplesBatch(ctx, client, newTuples); err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to write new tuples: %w", err)
+        }</span>
+
+        <span class="cov8" title="1">fmt.Println("Relation copy completed")
+        return nil</span>
+}
+
+// DeleteRelation deletes all tuples with a specific relation
+// Example: DeleteRelation(ctx, client, "team", "can_manage_members")
+func DeleteRelation(ctx context.Context, client *Client, objectType, relation string) error <span class="cov8" title="1">{
+        fmt.Printf("Deleting relation %s on type %s\n", relation, objectType)
+
+        // Read all tuples with relation
+        tuples, err := ReadAllTuples(ctx, client, objectType, relation)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to read tuples: %w", err)
+        }</span>
+
+        <span class="cov8" title="1">if len(tuples) == 0 </span><span class="cov0" title="0">{
+                fmt.Println("No tuples found to delete")
+                return nil
+        }</span>
+
+        <span class="cov8" title="1">fmt.Printf("Found %d tuples to delete\n", len(tuples))
+
+        // Delete tuples
+        if err := DeleteTuplesBatch(ctx, client, tuples); err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to delete tuples: %w", err)
+        }</span>
+
+        <span class="cov8" title="1">fmt.Println("Relation delete completed")
+        return nil</span>
+}
+
+// MigrateRelationWithTransform migrates tuples with a custom transformation function
+// Example: Transform user IDs, change object formats, etc.
+func MigrateRelationWithTransform(ctx context.Context, client *Client, objectType, oldRelation, newRelation string, transform TransformFunc) error <span class="cov8" title="1">{
+        fmt.Printf("Migrating relation %s -&gt; %s on type %s with custom transform\n", oldRelation, newRelation, objectType)
+
+        // Read all tuples with old relation
+        oldTuples, err := ReadAllTuples(ctx, client, objectType, oldRelation)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to read tuples: %w", err)
+        }</span>
+
+        <span class="cov8" title="1">if len(oldTuples) == 0 </span><span class="cov0" title="0">{
+                fmt.Println("No tuples found to migrate")
+                return nil
+        }</span>
+
+        <span class="cov8" title="1">fmt.Printf("Found %d tuples to migrate\n", len(oldTuples))
+
+        // Transform tuples
+        var newTuples []Tuple
+        for _, t := range oldTuples </span><span class="cov8" title="1">{
+                transformed, err := transform(t)
+                if err != nil </span><span class="cov0" title="0">{
+                        return fmt.Errorf("transform failed for tuple %v: %w", t, err)
+                }</span>
+
+                // Use new relation if specified
+                <span class="cov8" title="1">if newRelation != "" </span><span class="cov8" title="1">{
+                        transformed.Relation = newRelation
+                }</span>
+
+                <span class="cov8" title="1">newTuples = append(newTuples, transformed)</span>
+        }
+
+        // Write new tuples
+        <span class="cov8" title="1">if err := WriteTuplesBatch(ctx, client, newTuples); err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to write new tuples: %w", err)
+        }</span>
+
+        // Delete old tuples if relation changed
+        <span class="cov8" title="1">if oldRelation != newRelation &amp;&amp; newRelation != "" </span><span class="cov8" title="1">{
+                if err := DeleteTuplesBatch(ctx, client, oldTuples); err != nil </span><span class="cov0" title="0">{
+                        return fmt.Errorf("failed to delete old tuples: %w", err)
+                }</span>
+        }
+
+        <span class="cov8" title="1">fmt.Println("Migration with transform completed")
+        return nil</span>
+}
+
+// READ OPERATIONS
+
+// ReadAllTuples reads all tuples matching the criteria
+// Use empty string for objectType or relation to match all
+func ReadAllTuples(ctx context.Context, client *Client, objectType, relation string) ([]Tuple, error) <span class="cov8" title="1">{
+        req := ReadTuplesRequest{}
+
+        if objectType != "" </span><span class="cov8" title="1">{
+                req.Object = objectType + ":"
+        }</span>
+
+        <span class="cov8" title="1">if relation != "" </span><span class="cov8" title="1">{
+                req.Relation = relation
+        }</span>
+
+        <span class="cov8" title="1">return client.ReadAllTuples(ctx, req)</span>
+}
+
+// CountTuples counts tuples matching the criteria
+func CountTuples(ctx context.Context, client *Client, objectType, relation string) (int, error) <span class="cov8" title="1">{
+        tuples, err := ReadAllTuples(ctx, client, objectType, relation)
+        if err != nil </span><span class="cov0" title="0">{
+                return 0, err
+        }</span>
+        <span class="cov8" title="1">return len(tuples), nil</span>
+}
+
+// BATCH OPERATIONS
+
+// WriteTuplesBatch writes tuples in batches to avoid overwhelming the API
+func WriteTuplesBatch(ctx context.Context, client *Client, tuples []Tuple) error <span class="cov8" title="1">{
+        total := len(tuples)
+        for i := 0; i &lt; total; i += batchSize </span><span class="cov8" title="1">{
+                end := i + batchSize
+                if end &gt; total </span><span class="cov8" title="1">{
+                        end = total
+                }</span>
+
+                <span class="cov8" title="1">batch := tuples[i:end]
+                fmt.Printf("Writing batch %d-%d of %d tuples\n", i+1, end, total)
+
+                if err := client.WriteTuples(ctx, batch); err != nil </span><span class="cov0" title="0">{
+                        return fmt.Errorf("failed to write batch %d-%d: %w", i+1, end, err)
+                }</span>
+        }
+
+        <span class="cov8" title="1">return nil</span>
+}
+
+// DeleteTuplesBatch deletes tuples in batches
+func DeleteTuplesBatch(ctx context.Context, client *Client, tuples []Tuple) error <span class="cov8" title="1">{
+        total := len(tuples)
+        for i := 0; i &lt; total; i += batchSize </span><span class="cov8" title="1">{
+                end := i + batchSize
+                if end &gt; total </span><span class="cov8" title="1">{
+                        end = total
+                }</span>
+
+                <span class="cov8" title="1">batch := tuples[i:end]
+                fmt.Printf("Deleting batch %d-%d of %d tuples\n", i+1, end, total)
+
+                if err := client.DeleteTuples(ctx, batch); err != nil </span><span class="cov0" title="0">{
+                        return fmt.Errorf("failed to delete batch %d-%d: %w", i+1, end, err)
+                }</span>
+        }
+
+        <span class="cov8" title="1">return nil</span>
+}
+
+// UTILITY FUNCTIONS
+
+// BackupTuples exports all tuples to a backup (for safety before migrations)
+func BackupTuples(ctx context.Context, client *Client) ([]Tuple, error) <span class="cov8" title="1">{
+        fmt.Println("Backing up all tuples...")
+        tuples, err := ReadAllTuples(ctx, client, "", "")
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov8" title="1">fmt.Printf("Backed up %d tuples\n", len(tuples))
+        return tuples, nil</span>
+}
+
+// RestoreTuples restores tuples from a backup
+func RestoreTuples(ctx context.Context, client *Client, tuples []Tuple) error <span class="cov8" title="1">{
+        fmt.Printf("Restoring %d tuples...\n", len(tuples))
+        return WriteTuplesBatch(ctx, client, tuples)
+}</span>
+
+// ADVANCED MODEL OPERATIONS
+
+// AddTypeToModel adds a new type to the current model
+// Example: AddTypeToModel(ctx, client, "document", map[string]string{"owner": "[user]", "viewer": "[user] or owner"})
+func AddTypeToModel(ctx context.Context, client *Client, typeName string, relations map[string]string) error <span class="cov0" title="0">{
+        fmt.Printf("Adding type '%s' to model\n", typeName)
+
+        // Get current model
+        currentDSL, err := client.GetCurrentModel(ctx)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to get current model: %w", err)
+        }</span>
+
+        <span class="cov0" title="0">currentModel, err := parseDSLToModel(currentDSL)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to parse current model: %w", err)
+        }</span>
+
+        // Check if type already exists
+        <span class="cov0" title="0">for _, t := range currentModel.TypeDefinitions </span><span class="cov0" title="0">{
+                if t.Type == typeName </span><span class="cov0" title="0">{
+                        return fmt.Errorf("type '%s' already exists", typeName)
+                }</span>
+        }
+
+        // Create new type definition
+        <span class="cov0" title="0">relationMap := make(map[string]openfgaSdk.Userset)
+
+        // Parse relations
+        for relName, relDef := range relations </span><span class="cov0" title="0">{
+                userset, err := parseRelationDefinition(relDef)
+                if err != nil </span><span class="cov0" title="0">{
+                        return fmt.Errorf("failed to parse relation '%s': %w", relName, err)
+                }</span>
+                <span class="cov0" title="0">relationMap[relName] = userset</span>
+        }
+
+        <span class="cov0" title="0">newType := openfgaSdk.TypeDefinition{
+                Type:      typeName,
+                Relations: &amp;relationMap,
+        }
+
+        // Add to model
+        currentModel.TypeDefinitions = append(currentModel.TypeDefinitions, newType)
+
+        // Apply updated model
+        if err := client.WriteAuthorizationModel(ctx, currentModel); err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to write model: %w", err)
+        }</span>
+
+        <span class="cov0" title="0">fmt.Printf("Type '%s' added successfully\n", typeName)
+        return nil</span>
+}
+
+// AddRelationToType adds a new relation to an existing type
+// Example: AddRelationToType(ctx, client, "file", "can_delete", "[user] or owner")
+func AddRelationToType(ctx context.Context, client *Client, typeName, relationName, relationDef string) error <span class="cov0" title="0">{
+        fmt.Printf("Adding relation '%s' to type '%s'\n", relationName, typeName)
+
+        // Get current model
+        currentDSL, err := client.GetCurrentModel(ctx)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to get current model: %w", err)
+        }</span>
+
+        <span class="cov0" title="0">currentModel, err := parseDSLToModel(currentDSL)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to parse current model: %w", err)
+        }</span>
+
+        // Find the type
+        <span class="cov0" title="0">typeFound := false
+        for i, t := range currentModel.TypeDefinitions </span><span class="cov0" title="0">{
+                if t.Type == typeName </span><span class="cov0" title="0">{
+                        typeFound = true
+
+                        relations := t.GetRelations()
+                        // Check if relation already exists
+                        if _, exists := relations[relationName]; exists </span><span class="cov0" title="0">{
+                                return fmt.Errorf("relation '%s' already exists on type '%s'", relationName, typeName)
+                        }</span>
+
+                        // Parse relation definition
+                        <span class="cov0" title="0">userset, err := parseRelationDefinition(relationDef)
+                        if err != nil </span><span class="cov0" title="0">{
+                                return fmt.Errorf("failed to parse relation definition: %w", err)
+                        }</span>
+
+                        // Add relation
+                        <span class="cov0" title="0">relations[relationName] = userset
+                        currentModel.TypeDefinitions[i].Relations = &amp;relations
+                        break</span>
+                }
+        }
+
+        <span class="cov0" title="0">if !typeFound </span><span class="cov0" title="0">{
+                return fmt.Errorf("type '%s' not found", typeName)
+        }</span>
+
+        // Apply updated model
+        <span class="cov0" title="0">if err := client.WriteAuthorizationModel(ctx, currentModel); err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to write model: %w", err)
+        }</span>
+
+        <span class="cov0" title="0">fmt.Printf("Relation '%s' added to type '%s' successfully\n", relationName, typeName)
+        return nil</span>
+}
+
+// RemoveRelationFromType removes a relation from a type
+// WARNING: This will NOT delete the tuples - use DeleteRelation() for that
+func RemoveRelationFromType(ctx context.Context, client *Client, typeName, relationName string) error <span class="cov0" title="0">{
+        fmt.Printf("Removing relation '%s' from type '%s'\n", relationName, typeName)
+
+        // Get current model
+        currentDSL, err := client.GetCurrentModel(ctx)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to get current model: %w", err)
+        }</span>
+
+        <span class="cov0" title="0">currentModel, err := parseDSLToModel(currentDSL)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to parse current model: %w", err)
+        }</span>
+
+        // Find the type and remove relation
+        <span class="cov0" title="0">typeFound := false
+        relationFound := false
+        for i, t := range currentModel.TypeDefinitions </span><span class="cov0" title="0">{
+                if t.Type == typeName </span><span class="cov0" title="0">{
+                        typeFound = true
+
+                        relations := t.GetRelations()
+                        if _, exists := relations[relationName]; exists </span><span class="cov0" title="0">{
+                                relationFound = true
+                                delete(relations, relationName)
+                                currentModel.TypeDefinitions[i].Relations = &amp;relations
+                        }</span>
+                        <span class="cov0" title="0">break</span>
+                }
+        }
+
+        <span class="cov0" title="0">if !typeFound </span><span class="cov0" title="0">{
+                return fmt.Errorf("type '%s' not found", typeName)
+        }</span>
+
+        <span class="cov0" title="0">if !relationFound </span><span class="cov0" title="0">{
+                return fmt.Errorf("relation '%s' not found on type '%s'", relationName, typeName)
+        }</span>
+
+        // Apply updated model
+        <span class="cov0" title="0">if err := client.WriteAuthorizationModel(ctx, currentModel); err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to write model: %w", err)
+        }</span>
+
+        <span class="cov0" title="0">fmt.Printf("Relation '%s' removed from type '%s' successfully\n", relationName, typeName)
+        fmt.Println("NOTE: Existing tuples with this relation are NOT deleted. Run DeleteRelation() to remove them.")
+        return nil</span>
+}
+
+// RemoveTypeFromModel removes a type from the model
+// WARNING: This will NOT delete the tuples - handle tuple cleanup separately
+func RemoveTypeFromModel(ctx context.Context, client *Client, typeName string) error <span class="cov0" title="0">{
+        fmt.Printf("Removing type '%s' from model\n", typeName)
+
+        // Get current model
+        currentDSL, err := client.GetCurrentModel(ctx)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to get current model: %w", err)
+        }</span>
+
+        <span class="cov0" title="0">currentModel, err := parseDSLToModel(currentDSL)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to parse current model: %w", err)
+        }</span>
+
+        // Find and remove the type
+        <span class="cov0" title="0">typeFound := false
+        var updatedTypes []openfgaSdk.TypeDefinition
+        for _, t := range currentModel.TypeDefinitions </span><span class="cov0" title="0">{
+                if t.Type == typeName </span><span class="cov0" title="0">{
+                        typeFound = true
+                        continue</span>
+                }
+                <span class="cov0" title="0">updatedTypes = append(updatedTypes, t)</span>
+        }
+
+        <span class="cov0" title="0">if !typeFound </span><span class="cov0" title="0">{
+                return fmt.Errorf("type '%s' not found", typeName)
+        }</span>
+
+        <span class="cov0" title="0">currentModel.TypeDefinitions = updatedTypes
+
+        // Apply updated model
+        if err := client.WriteAuthorizationModel(ctx, currentModel); err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to write model: %w", err)
+        }</span>
+
+        <span class="cov0" title="0">fmt.Printf("Type '%s' removed successfully\n", typeName)
+        fmt.Println("NOTE: Existing tuples of this type are NOT deleted. Handle tuple cleanup separately.")
+        return nil</span>
+}
+
+// UpdateRelationDefinition updates the definition of an existing relation
+// Example: UpdateRelationDefinition(ctx, client, "file", "can_modify", "[user, group#member] or owner")
+func UpdateRelationDefinition(ctx context.Context, client *Client, typeName, relationName, newDefinition string) error <span class="cov0" title="0">{
+        fmt.Printf("Updating relation '%s' on type '%s'\n", relationName, typeName)
+
+        // Get current model
+        currentDSL, err := client.GetCurrentModel(ctx)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to get current model: %w", err)
+        }</span>
+
+        <span class="cov0" title="0">currentModel, err := parseDSLToModel(currentDSL)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to parse current model: %w", err)
+        }</span>
+
+        // Find the type and update relation
+        <span class="cov0" title="0">typeFound := false
+        relationFound := false
+        for i, t := range currentModel.TypeDefinitions </span><span class="cov0" title="0">{
+                if t.Type == typeName </span><span class="cov0" title="0">{
+                        typeFound = true
+
+                        relations := t.GetRelations()
+                        if _, exists := relations[relationName]; exists </span><span class="cov0" title="0">{
+                                relationFound = true
+
+                                // Parse new definition
+                                userset, err := parseRelationDefinition(newDefinition)
+                                if err != nil </span><span class="cov0" title="0">{
+                                        return fmt.Errorf("failed to parse new relation definition: %w", err)
+                                }</span>
+
+                                <span class="cov0" title="0">relations[relationName] = userset
+                                currentModel.TypeDefinitions[i].Relations = &amp;relations</span>
+                        }
+                        <span class="cov0" title="0">break</span>
+                }
+        }
+
+        <span class="cov0" title="0">if !typeFound </span><span class="cov0" title="0">{
+                return fmt.Errorf("type '%s' not found", typeName)
+        }</span>
+
+        <span class="cov0" title="0">if !relationFound </span><span class="cov0" title="0">{
+                return fmt.Errorf("relation '%s' not found on type '%s'", relationName, typeName)
+        }</span>
+
+        // Apply updated model
+        <span class="cov0" title="0">if err := client.WriteAuthorizationModel(ctx, currentModel); err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to write model: %w", err)
+        }</span>
+
+        <span class="cov0" title="0">fmt.Printf("Relation '%s' on type '%s' updated successfully\n", relationName, typeName)
+        return nil</span>
+}
+</pre>
+		
+		<pre class="file" id="file5" style="display: none">package omg
+
+import (
+        "context"
+        "sort"
+)
+
+// Migration represents a single OpenFGA migration with Up and Down functions
+type Migration struct {
+        Version string
+        Name    string
+        Up      func(ctx context.Context, client *Client) error
+        Down    func(ctx context.Context, client *Client) error
+}
+
+var migrations []Migration
+
+// Register adds a migration to the global registry
+// This should be called in init() functions of migration files
+func Register(m Migration) <span class="cov8" title="1">{
+        migrations = append(migrations, m)
+}</span>
+
+// GetAll returns all registered migrations sorted by version (timestamp)
+func GetAll() []Migration <span class="cov8" title="1">{
+        sorted := make([]Migration, len(migrations))
+        copy(sorted, migrations)
+        sort.Slice(sorted, func(i, j int) bool </span><span class="cov8" title="1">{
+                return sorted[i].Version &lt; sorted[j].Version
+        }</span>)
+        <span class="cov8" title="1">return sorted</span>
+}
+
+// Reset clears all registered migrations (used for testing)
+func Reset() <span class="cov8" title="1">{
+        migrations = []Migration{}
+}</span>
+</pre>
+		
+		<pre class="file" id="file6" style="display: none">package omg
+
+import (
+        "fmt"
+        "os"
+        "strings"
+        "time"
+)
+
+// GenerateMigrationFromChanges generates a migration file from detected model changes
+func GenerateMigrationFromChanges(changes []ModelChange, name string) (string, error) <span class="cov8" title="1">{
+        if len(changes) == 0 </span><span class="cov8" title="1">{
+                return "", fmt.Errorf("no changes detected")
+        }</span>
+
+        <span class="cov8" title="1">timestamp := time.Now().Format("20060102150405")
+        filename := fmt.Sprintf("migrations/%s_%s.go", timestamp, sanitizeName(name))
+
+        // Generate migration code
+        code := generateMigrationCode(timestamp, name, changes)
+
+        // Write to file
+        if err := os.MkdirAll("migrations", 0755); err != nil </span><span class="cov0" title="0">{
+                return "", fmt.Errorf("failed to create migrations directory: %w", err)
+        }</span>
+
+        <span class="cov8" title="1">if err := os.WriteFile(filename, []byte(code), 0644); err != nil </span><span class="cov0" title="0">{
+                return "", fmt.Errorf("failed to write migration file: %w", err)
+        }</span>
+
+        <span class="cov8" title="1">return filename, nil</span>
+}
+
+// generateMigrationCode generates the Go code for a migration
+func generateMigrationCode(version, name string, changes []ModelChange) string <span class="cov8" title="1">{
+        var builder strings.Builder
+
+        // Package and imports
+        builder.WriteString(`package migrations
+
+import (
+        "context"
+        "fmt"
+
+        "github.com/demetere/omg/pkg"
+)
+
+func init() {
+        omg.Register(omg.Migration{
+                Version: "` + version + `",
+                Name:    "` + sanitizeName(name) + `",
+                Up:      up_` + version + `,
+                Down:    down_` + version + `,
+        })
+}
+
+`)
+
+        // Up function
+        builder.WriteString("func up_" + version + "(ctx context.Context, client *omg.Client) error {\n")
+        builder.WriteString("\t// Auto-generated migration\n")
+        builder.WriteString("\t// Changes detected:\n")
+
+        for _, change := range changes </span><span class="cov8" title="1">{
+                builder.WriteString(fmt.Sprintf("\t// - %s\n", change.Details))
+        }</span>
+
+        <span class="cov8" title="1">builder.WriteString("\n")
+
+        // Generate up migration code
+        builder.WriteString(generateUpMigration(changes))
+
+        builder.WriteString("\n\treturn nil\n")
+        builder.WriteString("}\n\n")
+
+        // Down function
+        builder.WriteString("func down_" + version + "(ctx context.Context, client *omg.Client) error {\n")
+        builder.WriteString("\t// Rollback operations\n\n")
+
+        // Generate down migration code
+        builder.WriteString(generateDownMigration(changes))
+
+        builder.WriteString("\n\treturn nil\n")
+        builder.WriteString("}\n")
+
+        return builder.String()</span>
+}
+
+// generateUpMigration generates the up migration code
+func generateUpMigration(changes []ModelChange) string <span class="cov8" title="1">{
+        var builder strings.Builder
+
+        // Process changes in order:
+        // 1. Add types
+        // 2. Add relations
+        // 3. Update relations
+        // 4. Rename relations (with tuple migration)
+        // 5. Remove relations (with tuple cleanup)
+        // 6. Rename types (with tuple migration)
+        // 7. Remove types (with tuple cleanup)
+
+        orderedChanges := orderChangesForUp(changes)
+
+        for _, change := range orderedChanges </span><span class="cov8" title="1">{
+                switch change.Type </span>{
+                case ChangeTypeAddType:<span class="cov8" title="1">
+                        builder.WriteString(generateAddType(change))</span>
+
+                case ChangeTypeAddRelation:<span class="cov8" title="1">
+                        builder.WriteString(generateAddRelation(change))</span>
+
+                case ChangeTypeUpdateRelation:<span class="cov8" title="1">
+                        builder.WriteString(generateUpdateRelation(change))</span>
+
+                case ChangeTypeRenameRelation:<span class="cov8" title="1">
+                        builder.WriteString(generateRenameRelation(change))</span>
+
+                case ChangeTypeRemoveRelation:<span class="cov8" title="1">
+                        builder.WriteString(generateRemoveRelation(change))</span>
+
+                case ChangeTypeRenameType:<span class="cov8" title="1">
+                        builder.WriteString(generateRenameType(change))</span>
+
+                case ChangeTypeRemoveType:<span class="cov8" title="1">
+                        builder.WriteString(generateRemoveType(change))</span>
+                }
+        }
+
+        <span class="cov8" title="1">return builder.String()</span>
+}
+
+// generateDownMigration generates the down migration code (reverse order)
+func generateDownMigration(changes []ModelChange) string <span class="cov8" title="1">{
+        var builder strings.Builder
+
+        // Reverse the order for down migration
+        orderedChanges := orderChangesForDown(changes)
+
+        for _, change := range orderedChanges </span><span class="cov8" title="1">{
+                switch change.Type </span>{
+                case ChangeTypeAddType:<span class="cov8" title="1">
+                        // Reverse: remove type
+                        builder.WriteString(generateRemoveType(ModelChange{
+                                TypeName: change.TypeName,
+                        }))</span>
+
+                case ChangeTypeRemoveType:<span class="cov8" title="1">
+                        builder.WriteString("\t// NOTE: Cannot automatically restore removed type\n")
+                        builder.WriteString(fmt.Sprintf("\t// You need to manually add type '%s' back\n\n", change.TypeName))</span>
+
+                case ChangeTypeAddRelation:<span class="cov8" title="1">
+                        // Reverse: remove relation
+                        builder.WriteString(generateRemoveRelation(change))</span>
+
+                case ChangeTypeRemoveRelation:<span class="cov8" title="1">
+                        builder.WriteString("\t// NOTE: Cannot automatically restore removed relation\n")
+                        builder.WriteString(fmt.Sprintf("\t// You need to manually add relation '%s.%s' back\n\n", change.TypeName, change.RelationName))</span>
+
+                case ChangeTypeUpdateRelation:<span class="cov8" title="1">
+                        // Reverse: update back to old definition
+                        builder.WriteString(generateUpdateRelation(ModelChange{
+                                TypeName:     change.TypeName,
+                                RelationName: change.RelationName,
+                                NewValue:     change.OldValue, // Swap old and new
+                        }))</span>
+
+                case ChangeTypeRenameRelation:<span class="cov8" title="1">
+                        // Reverse: rename back
+                        builder.WriteString(generateRenameRelation(ModelChange{
+                                TypeName:     change.TypeName,
+                                RelationName: change.NewValue,
+                                OldValue:     change.NewValue,
+                                NewValue:     change.OldValue,
+                        }))</span>
+
+                case ChangeTypeRenameType:<span class="cov8" title="1">
+                        // Reverse: rename back
+                        builder.WriteString(generateRenameType(ModelChange{
+                                TypeName: change.NewValue,
+                                OldValue: change.NewValue,
+                                NewValue: change.OldValue,
+                        }))</span>
+                }
+        }
+
+        <span class="cov8" title="1">return builder.String()</span>
+}
+
+// Code generators for each change type
+
+func generateAddType(change ModelChange) string <span class="cov8" title="1">{
+        return fmt.Sprintf(`        // Add type: %s
+        // TODO: Define relations for this type
+        if err := omg.AddTypeToModel(ctx, client, "%s", map[string]string{
+                // Add your relations here
+                // "owner": "[user]",
+        }); err != nil {
+                return fmt.Errorf("failed to add type %s: %%w", err)
+        }
+
+`, change.TypeName, change.TypeName, change.TypeName)
+}</span>
+
+func generateAddRelation(change ModelChange) string <span class="cov8" title="1">{
+        // Try to extract a readable definition (simplified)
+        def := extractRelationDefinition(change.NewValue)
+
+        return fmt.Sprintf(`        // Add relation: %s.%s
+        if err := omg.AddRelationToType(ctx, client, "%s", "%s", "%s"); err != nil {
+                return fmt.Errorf("failed to add relation: %%w", err)
+        }
+
+`, change.TypeName, change.RelationName, change.TypeName, change.RelationName, def)
+}</span>
+
+func generateUpdateRelation(change ModelChange) string <span class="cov8" title="1">{
+        def := extractRelationDefinition(change.NewValue)
+
+        return fmt.Sprintf(`        // Update relation: %s.%s
+        if err := omg.UpdateRelationDefinition(ctx, client, "%s", "%s", "%s"); err != nil {
+                return fmt.Errorf("failed to update relation: %%w", err)
+        }
+
+`, change.TypeName, change.RelationName, change.TypeName, change.RelationName, def)
+}</span>
+
+func generateRenameRelation(change ModelChange) string <span class="cov8" title="1">{
+        switch change.Confidence </span>{
+        case ConfidenceHigh:<span class="cov8" title="1">
+                // High confidence: straightforward rename
+                return fmt.Sprintf(`        // Rename relation: %s.%s -&gt; %s.%s (high confidence)
+        // This will copy all tuples from the old relation to the new one
+        if err := omg.RenameRelation(ctx, client, "%s", "%s", "%s"); err != nil {
+                return fmt.Errorf("failed to rename relation: %%w", err)
+        }
+
+`, change.TypeName, change.OldValue, change.TypeName, change.NewValue,
+                        change.TypeName, change.OldValue, change.NewValue)</span>
+
+        case ConfidenceMedium:<span class="cov0" title="0">
+                // Medium confidence: generate rename with review notice
+                return fmt.Sprintf(`        // ⚠️  REVIEW REQUIRED: Possible relation rename
+        // Detected: %s.%s -&gt; %s.%s
+        //
+        // This appears to be a rename. Review and confirm before applying.
+        // If correct, this will preserve all existing tuples.
+        //
+        if err := omg.RenameRelation(ctx, client, "%s", "%s", "%s"); err != nil {
+                return fmt.Errorf("failed to rename relation: %%w", err)
+        }
+
+`, change.TypeName, change.OldValue, change.TypeName, change.NewValue,
+                        change.TypeName, change.OldValue, change.NewValue)</span>
+
+        case ConfidenceLow:<span class="cov0" title="0">
+                // Low confidence: offer both options
+                return fmt.Sprintf(`        // ⚠️  MANUAL REVIEW REQUIRED ⚠️
+        // Potential relation rename: %s.%s -&gt; %s.%s (low confidence)
+        //
+        // OPTION 1: If this IS a rename (preserve tuples), uncomment:
+        // if err := omg.RenameRelation(ctx, client, "%s", "%s", "%s"); err != nil {
+        //         return fmt.Errorf("failed to rename relation: %%w", err)
+        // }
+        //
+        // OPTION 2: If these are separate relations (default, safe):
+
+        // Remove old relation (new relation already in model.fga)
+        tuples, err := omg.ReadAllTuples(ctx, client, "%s", "%s")
+        if err != nil {
+                return fmt.Errorf("failed to read tuples: %%w", err)
+        }
+        if len(tuples) &gt; 0 {
+                fmt.Printf("⚠️  Deleting %%d tuples from relation '%s.%s'\n", len(tuples))
+                if err := omg.DeleteTuplesBatch(ctx, client, tuples); err != nil {
+                        return fmt.Errorf("failed to delete tuples: %%w", err)
+                }
+        }
+        if err := omg.RemoveRelationFromType(ctx, client, "%s", "%s"); err != nil {
+                return fmt.Errorf("failed to remove old relation: %%w", err)
+        }
+
+`, change.TypeName, change.OldValue, change.TypeName, change.NewValue,
+                        change.TypeName, change.OldValue, change.NewValue,
+                        change.TypeName, change.OldValue,
+                        change.TypeName, change.OldValue,
+                        change.TypeName, change.OldValue)</span>
+
+        default:<span class="cov8" title="1">
+                // Fallback
+                return fmt.Sprintf(`        // Rename relation: %s.%s -&gt; %s.%s
+        if err := omg.RenameRelation(ctx, client, "%s", "%s", "%s"); err != nil {
+                return fmt.Errorf("failed to rename relation: %%w", err)
+        }
+
+`, change.TypeName, change.OldValue, change.TypeName, change.NewValue,
+                        change.TypeName, change.OldValue, change.NewValue)</span>
+        }
+}
+
+func generateRemoveRelation(change ModelChange) string <span class="cov8" title="1">{
+        return fmt.Sprintf(`        // Remove relation: %s.%s
+        // Step 1: Remove from model
+        if err := omg.RemoveRelationFromType(ctx, client, "%s", "%s"); err != nil {
+                return fmt.Errorf("failed to remove relation from model: %%w", err)
+        }
+
+        // Step 2: Delete all tuples with this relation
+        if err := omg.DeleteRelation(ctx, client, "%s", "%s"); err != nil {
+                return fmt.Errorf("failed to delete tuples: %%w", err)
+        }
+
+`, change.TypeName, change.RelationName, change.TypeName, change.RelationName,
+                change.TypeName, change.RelationName)
+}</span>
+
+func generateRenameType(change ModelChange) string <span class="cov8" title="1">{
+        switch change.Confidence </span>{
+        case ConfidenceHigh:<span class="cov8" title="1">
+                // High confidence: generate rename with minimal comments
+                return fmt.Sprintf(`        // Rename type: %s -&gt; %s (high confidence rename detected)
+        // This will migrate all existing tuples to the new type name
+        if err := omg.RenameType(ctx, client, "%s", "%s"); err != nil {
+                return fmt.Errorf("failed to rename type: %%w", err)
+        }
+
+`, change.OldValue, change.NewValue, change.OldValue, change.NewValue)</span>
+
+        case ConfidenceMedium:<span class="cov8" title="1">
+                // Medium confidence: generate rename but warn user to review
+                return fmt.Sprintf(`        // ⚠️  REVIEW REQUIRED: Possible rename detected
+        // Detected: %s -&gt; %s
+        //
+        // This appears to be a rename based on similarity analysis.
+        // If this IS a rename (preserving tuples), keep the code below.
+        // If these are separate types, replace with AddType + DeleteType operations.
+        //
+        if err := omg.RenameType(ctx, client, "%s", "%s"); err != nil {
+                return fmt.Errorf("failed to rename type: %%w", err)
+        }
+
+`, change.OldValue, change.NewValue, change.OldValue, change.NewValue)</span>
+
+        case ConfidenceLow:<span class="cov8" title="1">
+                // Low confidence: generate commented-out rename with add+remove as default
+                return fmt.Sprintf(`        // ⚠️  MANUAL REVIEW REQUIRED ⚠️
+        // Detected potential rename: %s -&gt; %s (low confidence)
+        //
+        // OPTION 1: If this IS a rename (preserve tuples), uncomment:
+        // if err := omg.RenameType(ctx, client, "%s", "%s"); err != nil {
+        //         return fmt.Errorf("failed to rename type: %%w", err)
+        // }
+        //
+        // OPTION 2: If these are separate types (default, safe option):
+
+        // Add new type (already in model.fga)
+        // The new model definition is already applied
+
+        // Delete old type and its tuples
+        tuples, err := omg.ReadAllTuples(ctx, client, "%s", "")
+        if err != nil {
+                return fmt.Errorf("failed to read tuples: %%w", err)
+        }
+        if len(tuples) &gt; 0 {
+                fmt.Printf("⚠️  Deleting %%d tuples of type '%s'\n", len(tuples))
+                if err := omg.DeleteTuplesBatch(ctx, client, tuples); err != nil {
+                        return fmt.Errorf("failed to delete tuples: %%w", err)
+                }
+        }
+        if err := omg.RemoveTypeFromModel(ctx, client, "%s"); err != nil {
+                return fmt.Errorf("failed to remove old type: %%w", err)
+        }
+
+`, change.OldValue, change.NewValue, change.OldValue, change.NewValue,
+                        change.OldValue, change.OldValue, change.OldValue)</span>
+
+        default:<span class="cov8" title="1">
+                // Fallback to simple rename
+                return fmt.Sprintf(`        // Rename type: %s -&gt; %s
+        if err := omg.RenameType(ctx, client, "%s", "%s"); err != nil {
+                return fmt.Errorf("failed to rename type: %%w", err)
+        }
+
+`, change.OldValue, change.NewValue, change.OldValue, change.NewValue)</span>
+        }
+}
+
+func generateRemoveType(change ModelChange) string <span class="cov8" title="1">{
+        return fmt.Sprintf(`        // Remove type: %s
+        // Step 1: Delete all tuples of this type
+        tuples, err := omg.ReadAllTuples(ctx, client, "%s", "")
+        if err != nil {
+                return fmt.Errorf("failed to read tuples: %%w", err)
+        }
+
+        if len(tuples) &gt; 0 {
+                fmt.Printf("Deleting %%d tuples of type %s\n", len(tuples))
+                if err := omg.DeleteTuplesBatch(ctx, client, tuples); err != nil {
+                        return fmt.Errorf("failed to delete tuples: %%w", err)
+                }
+        }
+
+        // Step 2: Remove type from model
+        if err := omg.RemoveTypeFromModel(ctx, client, "%s"); err != nil {
+                return fmt.Errorf("failed to remove type from model: %%w", err)
+        }
+
+`, change.TypeName, change.TypeName, change.TypeName, change.TypeName)
+}</span>
+
+// Helper functions
+
+func sanitizeName(name string) string <span class="cov8" title="1">{
+        // Convert to valid Go identifier
+        name = strings.ToLower(name)
+        name = strings.ReplaceAll(name, " ", "_")
+        name = strings.ReplaceAll(name, "-", "_")
+        // Remove invalid characters
+        var result strings.Builder
+        for _, r := range name </span><span class="cov8" title="1">{
+                if (r &gt;= 'a' &amp;&amp; r &lt;= 'z') || (r &gt;= '0' &amp;&amp; r &lt;= '9') || r == '_' </span><span class="cov8" title="1">{
+                        result.WriteRune(r)
+                }</span>
+        }
+        <span class="cov8" title="1">return result.String()</span>
+}
+
+func extractRelationDefinition(serialized string) string <span class="cov8" title="1">{
+        // This is a placeholder - you'd need to properly deserialize
+        // the Userset and convert back to DSL format
+        // For now, return a simple default
+        return "[user]"
+}</span>
+
+func orderChangesForUp(changes []ModelChange) []ModelChange <span class="cov8" title="1">{
+        var ordered []ModelChange
+
+        // Order: add types, add relations, update relations, renames, removes
+        order := []ChangeType{
+                ChangeTypeAddType,
+                ChangeTypeAddRelation,
+                ChangeTypeUpdateRelation,
+                ChangeTypeRenameRelation,
+                ChangeTypeRenameType,
+                ChangeTypeRemoveRelation,
+                ChangeTypeRemoveType,
+        }
+
+        for _, changeType := range order </span><span class="cov8" title="1">{
+                for _, change := range changes </span><span class="cov8" title="1">{
+                        if change.Type == changeType </span><span class="cov8" title="1">{
+                                ordered = append(ordered, change)
+                        }</span>
+                }
+        }
+
+        <span class="cov8" title="1">return ordered</span>
+}
+
+func orderChangesForDown(changes []ModelChange) []ModelChange <span class="cov8" title="1">{
+        // Reverse order for down migration
+        ordered := orderChangesForUp(changes)
+
+        // Reverse the slice
+        for i, j := 0, len(ordered)-1; i &lt; j; i, j = i+1, j-1 </span><span class="cov8" title="1">{
+                ordered[i], ordered[j] = ordered[j], ordered[i]
+        }</span>
+
+        <span class="cov8" title="1">return ordered</span>
+}
+</pre>
+		
+		<pre class="file" id="file7" style="display: none">package omg
+
+import (
+        "fmt"
+        "os"
+        "regexp"
+        "strings"
+
+        openfgaSdk "github.com/openfga/go-sdk"
+)
+
+// ParseDSLToModel parses OpenFGA DSL format to an AuthorizationModel
+// This is a simplified parser - for production, consider using the official FGA parser
+func ParseDSLToModel(dsl string) (openfgaSdk.AuthorizationModel, error) <span class="cov8" title="1">{
+        return parseDSLToModel(dsl)
+}</span>
+
+// parseDSLToModel parses OpenFGA DSL format to an AuthorizationModel (internal)
+func parseDSLToModel(dsl string) (openfgaSdk.AuthorizationModel, error) <span class="cov8" title="1">{
+        model := openfgaSdk.AuthorizationModel{
+                SchemaVersion:   "1.1",
+                TypeDefinitions: []openfgaSdk.TypeDefinition{},
+        }
+
+        lines := strings.Split(dsl, "\n")
+        var currentType *openfgaSdk.TypeDefinition
+        var inRelations bool
+
+        for i, line := range lines </span><span class="cov8" title="1">{
+                line = strings.TrimSpace(line)
+
+                // Skip empty lines and comments
+                if line == "" || strings.HasPrefix(line, "#") </span><span class="cov8" title="1">{
+                        continue</span>
+                }
+
+                // Parse schema version
+                <span class="cov8" title="1">if strings.HasPrefix(line, "schema ") </span><span class="cov8" title="1">{
+                        version := strings.TrimSpace(strings.TrimPrefix(line, "schema"))
+                        model.SchemaVersion = version
+                        continue</span>
+                }
+
+                // Skip "model" keyword
+                <span class="cov8" title="1">if line == "model" </span><span class="cov0" title="0">{
+                        continue</span>
+                }
+
+                // Parse type definition
+                <span class="cov8" title="1">if strings.HasPrefix(line, "type ") </span><span class="cov8" title="1">{
+                        // Save previous type if exists
+                        if currentType != nil </span><span class="cov8" title="1">{
+                                model.TypeDefinitions = append(model.TypeDefinitions, *currentType)
+                        }</span>
+
+                        <span class="cov8" title="1">typeName := strings.TrimSpace(strings.TrimPrefix(line, "type"))
+                        relationMap := make(map[string]openfgaSdk.Userset)
+                        currentType = &amp;openfgaSdk.TypeDefinition{
+                                Type:      typeName,
+                                Relations: &amp;relationMap,
+                        }
+                        inRelations = false
+                        continue</span>
+                }
+
+                // Parse relations section
+                <span class="cov8" title="1">if line == "relations" </span><span class="cov8" title="1">{
+                        inRelations = true
+                        continue</span>
+                }
+
+                // Parse relation definition
+                <span class="cov8" title="1">if inRelations &amp;&amp; strings.HasPrefix(line, "define ") </span><span class="cov8" title="1">{
+                        if currentType == nil </span><span class="cov8" title="1">{
+                                return model, fmt.Errorf("relation defined outside of type at line %d", i+1)
+                        }</span>
+
+                        // Parse: define relation_name: [user, group#member] or owner
+                        <span class="cov8" title="1">defineStr := strings.TrimSpace(strings.TrimPrefix(line, "define"))
+                        parts := strings.SplitN(defineStr, ":", 2)
+                        if len(parts) != 2 </span><span class="cov8" title="1">{
+                                return model, fmt.Errorf("invalid relation definition at line %d: %s", i+1, line)
+                        }</span>
+
+                        <span class="cov8" title="1">relationName := strings.TrimSpace(parts[0])
+                        relationDef := strings.TrimSpace(parts[1])
+
+                        userset, err := parseRelationDefinition(relationDef)
+                        if err != nil </span><span class="cov8" title="1">{
+                                return model, fmt.Errorf("failed to parse relation '%s' at line %d: %w", relationName, i+1, err)
+                        }</span>
+
+                        <span class="cov8" title="1">relations := currentType.GetRelations()
+                        relations[relationName] = userset
+                        currentType.Relations = &amp;relations</span>
+                }
+        }
+
+        // Save last type
+        <span class="cov8" title="1">if currentType != nil </span><span class="cov8" title="1">{
+                model.TypeDefinitions = append(model.TypeDefinitions, *currentType)
+        }</span>
+
+        <span class="cov8" title="1">return model, nil</span>
+}
+
+// parseRelationDefinition parses a relation definition into a Userset
+// Examples:
+//   - [user] -&gt; direct relation to user type
+//   - [user, group#member] -&gt; direct relation to multiple types
+//   - [user] or owner -&gt; union of direct and computed relation
+//   - owner -&gt; computed relation
+func parseRelationDefinition(def string) (openfgaSdk.Userset, error) <span class="cov8" title="1">{
+        userset := openfgaSdk.Userset{}
+
+        // Handle "or" operator (union)
+        if strings.Contains(def, " or ") </span><span class="cov8" title="1">{
+                parts := strings.Split(def, " or ")
+                var children []openfgaSdk.Userset
+                for _, part := range parts </span><span class="cov8" title="1">{
+                        child, err := parseRelationDefinition(strings.TrimSpace(part))
+                        if err != nil </span><span class="cov8" title="1">{
+                                return userset, err
+                        }</span>
+                        <span class="cov8" title="1">children = append(children, child)</span>
+                }
+                <span class="cov8" title="1">userset.Union = &amp;openfgaSdk.Usersets{Child: children}
+                return userset, nil</span>
+        }
+
+        // Handle "and" operator (intersection)
+        <span class="cov8" title="1">if strings.Contains(def, " and ") </span><span class="cov8" title="1">{
+                parts := strings.Split(def, " and ")
+                var children []openfgaSdk.Userset
+                for _, part := range parts </span><span class="cov8" title="1">{
+                        child, err := parseRelationDefinition(strings.TrimSpace(part))
+                        if err != nil </span><span class="cov0" title="0">{
+                                return userset, err
+                        }</span>
+                        <span class="cov8" title="1">children = append(children, child)</span>
+                }
+                <span class="cov8" title="1">userset.Intersection = &amp;openfgaSdk.Usersets{Child: children}
+                return userset, nil</span>
+        }
+
+        // Handle "but not" operator (difference)
+        <span class="cov8" title="1">if strings.Contains(def, " but not ") </span><span class="cov8" title="1">{
+                parts := strings.Split(def, " but not ")
+                if len(parts) != 2 </span><span class="cov8" title="1">{
+                        return userset, fmt.Errorf("invalid 'but not' syntax: %s", def)
+                }</span>
+                <span class="cov8" title="1">base, err := parseRelationDefinition(strings.TrimSpace(parts[0]))
+                if err != nil </span><span class="cov0" title="0">{
+                        return userset, err
+                }</span>
+                <span class="cov8" title="1">subtract, err := parseRelationDefinition(strings.TrimSpace(parts[1]))
+                if err != nil </span><span class="cov0" title="0">{
+                        return userset, err
+                }</span>
+                <span class="cov8" title="1">userset.Difference = &amp;openfgaSdk.Difference{
+                        Base:     base,
+                        Subtract: subtract,
+                }
+                return userset, nil</span>
+        }
+
+        // Handle direct relation: [user] or [user, group#member]
+        <span class="cov8" title="1">if strings.HasPrefix(def, "[") &amp;&amp; strings.HasSuffix(def, "]") </span><span class="cov8" title="1">{
+                typesStr := strings.TrimPrefix(strings.TrimSuffix(def, "]"), "[")
+                typeList := strings.Split(typesStr, ",")
+
+                var typeRestrictions []openfgaSdk.RelationReference
+                for _, t := range typeList </span><span class="cov8" title="1">{
+                        t = strings.TrimSpace(t)
+                        if t == "" </span><span class="cov0" title="0">{
+                                continue</span>
+                        }
+
+                        // Parse type#relation format
+                        <span class="cov8" title="1">if strings.Contains(t, "#") </span><span class="cov8" title="1">{
+                                parts := strings.Split(t, "#")
+                                if len(parts) != 2 </span><span class="cov0" title="0">{
+                                        return userset, fmt.Errorf("invalid type#relation format: %s", t)
+                                }</span>
+                                <span class="cov8" title="1">typeRestrictions = append(typeRestrictions, openfgaSdk.RelationReference{
+                                        Type:     parts[0],
+                                        Relation: openfgaSdk.PtrString(parts[1]),
+                                })</span>
+                        } else<span class="cov8" title="1"> {
+                                // Simple type reference
+                                typeRestrictions = append(typeRestrictions, openfgaSdk.RelationReference{
+                                        Type: t,
+                                })
+                        }</span>
+                }
+
+                // Direct userset - for simplified parsing, just set this
+                // In full implementation, you'd properly handle type restrictions
+                <span class="cov8" title="1">thisMap := make(map[string]interface{})
+                userset.This = &amp;thisMap
+                return userset, nil</span>
+        }
+
+        // Handle computed relation: owner, parent
+        <span class="cov8" title="1">if matched, _ := regexp.MatchString(`^[a-zA-Z_][a-zA-Z0-9_]*$`, def); matched </span><span class="cov8" title="1">{
+                userset.ComputedUserset = &amp;openfgaSdk.ObjectRelation{
+                        Relation: openfgaSdk.PtrString(def),
+                }
+                return userset, nil
+        }</span>
+
+        // Handle tuple-to-userset: parent-&gt;owner
+        <span class="cov8" title="1">if strings.Contains(def, "-&gt;") </span><span class="cov8" title="1">{
+                parts := strings.Split(def, "-&gt;")
+                if len(parts) != 2 </span><span class="cov8" title="1">{
+                        return userset, fmt.Errorf("invalid tuple-to-userset format: %s", def)
+                }</span>
+                <span class="cov8" title="1">userset.TupleToUserset = &amp;openfgaSdk.TupleToUserset{
+                        Tupleset: openfgaSdk.ObjectRelation{
+                                Relation: openfgaSdk.PtrString(strings.TrimSpace(parts[0])),
+                        },
+                        ComputedUserset: openfgaSdk.ObjectRelation{
+                                Relation: openfgaSdk.PtrString(strings.TrimSpace(parts[1])),
+                        },
+                }
+                return userset, nil</span>
+        }
+
+        <span class="cov8" title="1">return userset, fmt.Errorf("unable to parse relation definition: %s", def)</span>
+}
+
+// generateModelDiff generates a human-readable diff between two models
+func generateModelDiff(current, new openfgaSdk.AuthorizationModel) string <span class="cov0" title="0">{
+        var diff strings.Builder
+
+        diff.WriteString("Model Changes:\n")
+        diff.WriteString("==============\n\n")
+
+        // Build maps for easier comparison
+        currentTypes := make(map[string]openfgaSdk.TypeDefinition)
+        for _, t := range current.TypeDefinitions </span><span class="cov0" title="0">{
+                currentTypes[t.Type] = t
+        }</span>
+
+        <span class="cov0" title="0">newTypes := make(map[string]openfgaSdk.TypeDefinition)
+        for _, t := range new.TypeDefinitions </span><span class="cov0" title="0">{
+                newTypes[t.Type] = t
+        }</span>
+
+        // Check for new types
+        <span class="cov0" title="0">for typeName, typeDef := range newTypes </span><span class="cov0" title="0">{
+                if _, exists := currentTypes[typeName]; !exists </span><span class="cov0" title="0">{
+                        diff.WriteString(fmt.Sprintf("+ Added type: %s\n", typeName))
+                        relations := typeDef.GetRelations()
+                        for relName := range relations </span><span class="cov0" title="0">{
+                                diff.WriteString(fmt.Sprintf("  + Added relation: %s\n", relName))
+                        }</span>
+                        <span class="cov0" title="0">diff.WriteString("\n")</span>
+                }
+        }
+
+        // Check for removed types
+        <span class="cov0" title="0">for typeName := range currentTypes </span><span class="cov0" title="0">{
+                if _, exists := newTypes[typeName]; !exists </span><span class="cov0" title="0">{
+                        diff.WriteString(fmt.Sprintf("- Removed type: %s\n", typeName))
+                        diff.WriteString("\n")
+                }</span>
+        }
+
+        // Check for modified types
+        <span class="cov0" title="0">for typeName, currentType := range currentTypes </span><span class="cov0" title="0">{
+                if newType, exists := newTypes[typeName]; exists </span><span class="cov0" title="0">{
+                        changes := false
+
+                        currentRels := currentType.GetRelations()
+                        newRels := newType.GetRelations()
+
+                        // Check for new relations
+                        for relName := range newRels </span><span class="cov0" title="0">{
+                                if _, exists := currentRels[relName]; !exists </span><span class="cov0" title="0">{
+                                        if !changes </span><span class="cov0" title="0">{
+                                                diff.WriteString(fmt.Sprintf("~ Modified type: %s\n", typeName))
+                                                changes = true
+                                        }</span>
+                                        <span class="cov0" title="0">diff.WriteString(fmt.Sprintf("  + Added relation: %s\n", relName))</span>
+                                }
+                        }
+
+                        // Check for removed relations
+                        <span class="cov0" title="0">for relName := range currentRels </span><span class="cov0" title="0">{
+                                if _, exists := newRels[relName]; !exists </span><span class="cov0" title="0">{
+                                        if !changes </span><span class="cov0" title="0">{
+                                                diff.WriteString(fmt.Sprintf("~ Modified type: %s\n", typeName))
+                                                changes = true
+                                        }</span>
+                                        <span class="cov0" title="0">diff.WriteString(fmt.Sprintf("  - Removed relation: %s\n", relName))</span>
+                                }
+                        }
+
+                        <span class="cov0" title="0">if changes </span><span class="cov0" title="0">{
+                                diff.WriteString("\n")
+                        }</span>
+                }
+        }
+
+        <span class="cov0" title="0">result := diff.String()
+        if result == "Model Changes:\n==============\n\n" </span><span class="cov0" title="0">{
+                return "No changes detected"
+        }</span>
+
+        <span class="cov0" title="0">return result</span>
+}
+
+// readFile reads file content
+func readFile(path string) ([]byte, error) <span class="cov0" title="0">{
+        return os.ReadFile(path)
+}</span>
+</pre>
+		
+		<pre class="file" id="file8" style="display: none">package omg
+
+import (
+        "context"
+        "encoding/json"
+        "fmt"
+        "os"
+        "strings"
+
+        openfgaSdk "github.com/openfga/go-sdk"
+)
+
+const (
+        modelFile = "model.fga"
+)
+
+// ModelState represents the state of an authorization model
+// This is built from either OpenFGA (current state) or model.fga (desired state)
+type ModelState struct {
+        Types map[string]TypeState
+}
+
+// TypeState represents the state of a single type
+type TypeState struct {
+        Name      string            `json:"name"`
+        Relations map[string]string `json:"relations"` // relation name -&gt; definition
+}
+
+// ModelChange represents a detected change in the model
+type ModelChange struct {
+        Type         ChangeType
+        TypeName     string
+        RelationName string
+        OldValue     string
+        NewValue     string
+        Details      string
+        Confidence   ConfidenceLevel // For renames: high = auto-apply, medium = needs review, low = suggest only
+}
+
+// ChangeType represents the kind of change detected
+type ChangeType string
+
+const (
+        ChangeTypeAddType         ChangeType = "add_type"
+        ChangeTypeRemoveType      ChangeType = "remove_type"
+        ChangeTypeRenameType      ChangeType = "rename_type"      // Requires user confirmation
+        ChangeTypeAddRelation     ChangeType = "add_relation"
+        ChangeTypeRemoveRelation  ChangeType = "remove_relation"
+        ChangeTypeRenameRelation  ChangeType = "rename_relation"  // Requires user confirmation
+        ChangeTypeUpdateRelation  ChangeType = "update_relation"
+)
+
+// ConfidenceLevel represents how confident we are about a rename detection
+type ConfidenceLevel string
+
+const (
+        ConfidenceHigh   ConfidenceLevel = "high"   // Very likely a rename (e.g., team_member → teamMember)
+        ConfidenceMedium ConfidenceLevel = "medium" // Possibly a rename, needs review (e.g., team → organization)
+        ConfidenceLow    ConfidenceLevel = "low"    // Unlikely, but suggest as option
+        ConfidenceNone   ConfidenceLevel = ""       // Not applicable (for non-rename changes)
+)
+
+// LoadModelStateFromOpenFGA loads the current model state from OpenFGA
+func LoadModelStateFromOpenFGA(ctx context.Context, client *Client) (*ModelState, error) <span class="cov8" title="1">{
+        model, err := client.GetCurrentAuthorizationModel(ctx)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("failed to get current model from OpenFGA: %w", err)
+        }</span>
+
+        <span class="cov8" title="1">return BuildModelStateFromAuthorizationModel(model), nil</span>
+}
+
+// BuildModelStateFromAuthorizationModel converts an OpenFGA authorization model to ModelState
+func BuildModelStateFromAuthorizationModel(model openfgaSdk.AuthorizationModel) *ModelState <span class="cov8" title="1">{
+        state := &amp;ModelState{
+                Types: make(map[string]TypeState),
+        }
+
+        for _, typeDef := range model.GetTypeDefinitions() </span><span class="cov8" title="1">{
+                typeName := typeDef.GetType()
+                typeState := TypeState{
+                        Name:      typeName,
+                        Relations: make(map[string]string),
+                }
+
+                relations := typeDef.GetRelations()
+                for relName, relDef := range relations </span><span class="cov8" title="1">{
+                        typeState.Relations[relName] = serializeUserset(relDef)
+                }</span>
+
+                <span class="cov8" title="1">state.Types[typeName] = typeState</span>
+        }
+
+        <span class="cov8" title="1">return state</span>
+}
+
+// LoadCurrentModel loads the current model from model.fga file
+func LoadCurrentModel() (string, error) <span class="cov0" title="0">{
+        data, err := os.ReadFile(modelFile)
+        if err != nil </span><span class="cov0" title="0">{
+                return "", fmt.Errorf("failed to read %s: %w", modelFile, err)
+        }</span>
+        <span class="cov0" title="0">return string(data), nil</span>
+}
+
+
+// BuildModelState builds a ModelState from a parsed model (from model.fga)
+func BuildModelState(model openfgaSdk.AuthorizationModel) *ModelState <span class="cov0" title="0">{
+        state := &amp;ModelState{
+                Types: make(map[string]TypeState),
+        }
+
+        for _, typeDef := range model.TypeDefinitions </span><span class="cov0" title="0">{
+                typeState := TypeState{
+                        Name:      typeDef.Type,
+                        Relations: make(map[string]string),
+                }
+
+                relations := typeDef.GetRelations()
+                for relName, relDef := range relations </span><span class="cov0" title="0">{
+                        // Convert relation definition to string for comparison
+                        typeState.Relations[relName] = serializeUserset(relDef)
+                }</span>
+
+                <span class="cov0" title="0">state.Types[typeDef.Type] = typeState</span>
+        }
+
+        <span class="cov0" title="0">return state</span>
+}
+
+// serializeUserset converts a Userset to a string representation
+func serializeUserset(userset openfgaSdk.Userset) string <span class="cov8" title="1">{
+        // Simplified serialization - good enough for comparison
+        data, _ := json.Marshal(userset)
+        return string(data)
+}</span>
+
+// DetectChanges compares old and new model states and returns detected changes
+func DetectChanges(oldState, newState *ModelState) []ModelChange <span class="cov8" title="1">{
+        var changes []ModelChange
+
+        // Detect type changes
+        oldTypes := oldState.Types
+        newTypes := newState.Types
+
+        // Find added types
+        for typeName, typeState := range newTypes </span><span class="cov8" title="1">{
+                if _, exists := oldTypes[typeName]; !exists </span><span class="cov8" title="1">{
+                        changes = append(changes, ModelChange{
+                                Type:     ChangeTypeAddType,
+                                TypeName: typeName,
+                                Details:  fmt.Sprintf("New type '%s' with %d relations", typeName, len(typeState.Relations)),
+                        })
+                }</span>
+        }
+
+        // Find removed types
+        <span class="cov8" title="1">for typeName := range oldTypes </span><span class="cov8" title="1">{
+                if _, exists := newTypes[typeName]; !exists </span><span class="cov8" title="1">{
+                        changes = append(changes, ModelChange{
+                                Type:     ChangeTypeRemoveType,
+                                TypeName: typeName,
+                                Details:  fmt.Sprintf("Type '%s' removed", typeName),
+                        })
+                }</span>
+        }
+
+        // Find modified types (relation changes)
+        <span class="cov8" title="1">for typeName, newTypeState := range newTypes </span><span class="cov8" title="1">{
+                oldTypeState, exists := oldTypes[typeName]
+                if !exists </span><span class="cov8" title="1">{
+                        continue</span> // Already handled as added type
+                }
+
+                // Compare relations
+                <span class="cov8" title="1">oldRels := oldTypeState.Relations
+                newRels := newTypeState.Relations
+
+                // Added relations
+                for relName, relDef := range newRels </span><span class="cov8" title="1">{
+                        if _, exists := oldRels[relName]; !exists </span><span class="cov8" title="1">{
+                                changes = append(changes, ModelChange{
+                                        Type:         ChangeTypeAddRelation,
+                                        TypeName:     typeName,
+                                        RelationName: relName,
+                                        NewValue:     relDef,
+                                        Details:      fmt.Sprintf("Added relation '%s.%s'", typeName, relName),
+                                })
+                        }</span>
+                }
+
+                // Removed relations
+                <span class="cov8" title="1">for relName, relDef := range oldRels </span><span class="cov8" title="1">{
+                        if _, exists := newRels[relName]; !exists </span><span class="cov8" title="1">{
+                                changes = append(changes, ModelChange{
+                                        Type:         ChangeTypeRemoveRelation,
+                                        TypeName:     typeName,
+                                        RelationName: relName,
+                                        OldValue:     relDef,
+                                        Details:      fmt.Sprintf("Removed relation '%s.%s'", typeName, relName),
+                                })
+                        }</span>
+                }
+
+                // Modified relations
+                <span class="cov8" title="1">for relName, newRelDef := range newRels </span><span class="cov8" title="1">{
+                        oldRelDef, exists := oldRels[relName]
+                        if exists &amp;&amp; oldRelDef != newRelDef </span><span class="cov8" title="1">{
+                                changes = append(changes, ModelChange{
+                                        Type:         ChangeTypeUpdateRelation,
+                                        TypeName:     typeName,
+                                        RelationName: relName,
+                                        OldValue:     oldRelDef,
+                                        NewValue:     newRelDef,
+                                        Details:      fmt.Sprintf("Updated relation '%s.%s' definition", typeName, relName),
+                                })
+                        }</span>
+                }
+        }
+
+        <span class="cov8" title="1">return changes</span>
+}
+
+// DetectPotentialRenames attempts to detect renames by looking for similar type/relation names
+// It uses name similarity and relation similarity to determine confidence levels
+func DetectPotentialRenames(changes []ModelChange, oldState, newState *ModelState) []ModelChange <span class="cov8" title="1">{
+        var enhanced []ModelChange
+
+        // Group changes by type
+        var addedTypes []ModelChange
+        var removedTypes []ModelChange
+        var addedRelations []ModelChange
+        var removedRelations []ModelChange
+
+        for _, change := range changes </span><span class="cov8" title="1">{
+                switch change.Type </span>{
+                case ChangeTypeAddType:<span class="cov8" title="1">
+                        addedTypes = append(addedTypes, change)</span>
+                case ChangeTypeRemoveType:<span class="cov8" title="1">
+                        removedTypes = append(removedTypes, change)</span>
+                case ChangeTypeAddRelation:<span class="cov8" title="1">
+                        addedRelations = append(addedRelations, change)</span>
+                case ChangeTypeRemoveRelation:<span class="cov8" title="1">
+                        removedRelations = append(removedRelations, change)</span>
+                default:<span class="cov0" title="0">
+                        enhanced = append(enhanced, change)</span>
+                }
+        }
+
+        // Detect type renames (1 removed + 1 added = potential rename)
+        <span class="cov8" title="1">usedRemovals := make(map[int]bool)
+        usedAdditions := make(map[int]bool)
+
+        for i, removed := range removedTypes </span><span class="cov8" title="1">{
+                bestMatch := -1
+                bestConfidence := ConfidenceNone
+                bestNameSim := 0.0
+                bestRelSim := 0.0
+
+                for j, added := range addedTypes </span><span class="cov8" title="1">{
+                        if usedAdditions[j] </span><span class="cov8" title="1">{
+                                continue</span>
+                        }
+
+                        // Calculate name similarity
+                        <span class="cov8" title="1">nameSim := calculateSimilarity(removed.TypeName, added.TypeName)
+
+                        // Calculate relation similarity (if we have access to type states)
+                        relSim := 0.0
+                        if oldState != nil &amp;&amp; newState != nil </span><span class="cov8" title="1">{
+                                oldTypeState, oldExists := oldState.Types[removed.TypeName]
+                                newTypeState, newExists := newState.Types[added.TypeName]
+                                if oldExists &amp;&amp; newExists </span><span class="cov8" title="1">{
+                                        relSim = haveSimilarRelations(oldTypeState, newTypeState)
+                                }</span>
+                        }
+
+                        // Determine confidence
+                        <span class="cov8" title="1">confidence := determineRenameConfidence(nameSim, relSim)
+
+                        // Track the best match
+                        if confidence != ConfidenceNone &amp;&amp; (bestMatch == -1 || confidence &gt; bestConfidence ||
+                                (confidence == bestConfidence &amp;&amp; nameSim &gt; bestNameSim)) </span><span class="cov8" title="1">{
+                                bestMatch = j
+                                bestConfidence = confidence
+                                bestNameSim = nameSim
+                                bestRelSim = relSim
+                        }</span>
+                }
+
+                // If we found a potential rename, add it
+                <span class="cov8" title="1">if bestMatch != -1 </span><span class="cov8" title="1">{
+                        added := addedTypes[bestMatch]
+
+                        detailsMsg := fmt.Sprintf("Rename detected: '%s' -&gt; '%s'", removed.TypeName, added.TypeName)
+                        switch bestConfidence </span>{
+                        case ConfidenceHigh:<span class="cov8" title="1">
+                                detailsMsg = fmt.Sprintf("Rename detected: '%s' -&gt; '%s' (high confidence: %.0f%% name, %.0f%% relations)",
+                                        removed.TypeName, added.TypeName, bestNameSim*100, bestRelSim*100)</span>
+                        case ConfidenceMedium:<span class="cov8" title="1">
+                                detailsMsg = fmt.Sprintf("Possible rename: '%s' -&gt; '%s' (medium confidence - review required)",
+                                        removed.TypeName, added.TypeName)</span>
+                        case ConfidenceLow:<span class="cov0" title="0">
+                                detailsMsg = fmt.Sprintf("Potential rename: '%s' -&gt; '%s' (low confidence - verify before using)",
+                                        removed.TypeName, added.TypeName)</span>
+                        }
+
+                        <span class="cov8" title="1">enhanced = append(enhanced, ModelChange{
+                                Type:       ChangeTypeRenameType,
+                                TypeName:   removed.TypeName,
+                                OldValue:   removed.TypeName,
+                                NewValue:   added.TypeName,
+                                Confidence: bestConfidence,
+                                Details:    detailsMsg,
+                        })
+                        usedRemovals[i] = true
+                        usedAdditions[bestMatch] = true</span>
+                }
+        }
+
+        // Add remaining type changes that weren't matched as renames
+        <span class="cov8" title="1">for i, change := range removedTypes </span><span class="cov8" title="1">{
+                if !usedRemovals[i] </span><span class="cov8" title="1">{
+                        enhanced = append(enhanced, change)
+                }</span>
+        }
+        <span class="cov8" title="1">for i, change := range addedTypes </span><span class="cov8" title="1">{
+                if !usedAdditions[i] </span><span class="cov8" title="1">{
+                        enhanced = append(enhanced, change)
+                }</span>
+        }
+
+        // Similar logic for relation renames within the same type
+        <span class="cov8" title="1">relationsByType := make(map[string]struct {
+                added   []ModelChange
+                removed []ModelChange
+        })
+
+        for _, change := range addedRelations </span><span class="cov8" title="1">{
+                entry := relationsByType[change.TypeName]
+                entry.added = append(entry.added, change)
+                relationsByType[change.TypeName] = entry
+        }</span>
+
+        <span class="cov8" title="1">for _, change := range removedRelations </span><span class="cov8" title="1">{
+                entry := relationsByType[change.TypeName]
+                entry.removed = append(entry.removed, change)
+                relationsByType[change.TypeName] = entry
+        }</span>
+
+        <span class="cov8" title="1">for typeName, relations := range relationsByType </span><span class="cov8" title="1">{
+                usedRemovals := make(map[int]bool)
+                usedAdditions := make(map[int]bool)
+
+                for i, removed := range relations.removed </span><span class="cov8" title="1">{
+                        bestMatch := -1
+                        bestConfidence := ConfidenceNone
+                        bestSim := 0.0
+
+                        for j, added := range relations.added </span><span class="cov8" title="1">{
+                                if usedAdditions[j] </span><span class="cov0" title="0">{
+                                        continue</span>
+                                }
+
+                                // Calculate relation name similarity
+                                <span class="cov8" title="1">sim := calculateSimilarity(removed.RelationName, added.RelationName)
+
+                                // For relations, we only use name similarity (no sub-structure to compare)
+                                confidence := determineRenameConfidence(sim, 0.0)
+
+                                if confidence != ConfidenceNone &amp;&amp; (bestMatch == -1 || confidence &gt; bestConfidence ||
+                                        (confidence == bestConfidence &amp;&amp; sim &gt; bestSim)) </span><span class="cov8" title="1">{
+                                        bestMatch = j
+                                        bestConfidence = confidence
+                                        bestSim = sim
+                                }</span>
+                        }
+
+                        // If we found a potential rename, add it
+                        <span class="cov8" title="1">if bestMatch != -1 </span><span class="cov8" title="1">{
+                                added := relations.added[bestMatch]
+
+                                detailsMsg := ""
+                                switch bestConfidence </span>{
+                                case ConfidenceHigh:<span class="cov0" title="0">
+                                        detailsMsg = fmt.Sprintf("Rename detected: '%s.%s' -&gt; '%s.%s' (high confidence: %.0f%%)",
+                                                typeName, removed.RelationName, typeName, added.RelationName, bestSim*100)</span>
+                                case ConfidenceMedium:<span class="cov0" title="0">
+                                        detailsMsg = fmt.Sprintf("Possible rename: '%s.%s' -&gt; '%s.%s' (medium confidence - review required)",
+                                                typeName, removed.RelationName, typeName, added.RelationName)</span>
+                                case ConfidenceLow:<span class="cov8" title="1">
+                                        detailsMsg = fmt.Sprintf("Potential rename: '%s.%s' -&gt; '%s.%s' (low confidence - verify before using)",
+                                                typeName, removed.RelationName, typeName, added.RelationName)</span>
+                                }
+
+                                <span class="cov8" title="1">enhanced = append(enhanced, ModelChange{
+                                        Type:         ChangeTypeRenameRelation,
+                                        TypeName:     typeName,
+                                        RelationName: removed.RelationName,
+                                        OldValue:     removed.RelationName,
+                                        NewValue:     added.RelationName,
+                                        Confidence:   bestConfidence,
+                                        Details:      detailsMsg,
+                                })
+                                usedRemovals[i] = true
+                                usedAdditions[bestMatch] = true</span>
+                        }
+                }
+
+                // Add remaining changes
+                <span class="cov8" title="1">for i, change := range relations.removed </span><span class="cov8" title="1">{
+                        if !usedRemovals[i] </span><span class="cov8" title="1">{
+                                enhanced = append(enhanced, change)
+                        }</span>
+                }
+                <span class="cov8" title="1">for i, change := range relations.added </span><span class="cov8" title="1">{
+                        if !usedAdditions[i] </span><span class="cov8" title="1">{
+                                enhanced = append(enhanced, change)
+                        }</span>
+                }
+        }
+
+        <span class="cov8" title="1">return enhanced</span>
+}
+
+// areSimilar checks if two names are similar (basic heuristic)
+func areSimilar(name1, name2 string) bool <span class="cov0" title="0">{
+        // Convert to lowercase for comparison
+        n1 := strings.ToLower(name1)
+        n2 := strings.ToLower(name2)
+
+        // Check if one contains the other
+        if strings.Contains(n1, n2) || strings.Contains(n2, n1) </span><span class="cov0" title="0">{
+                return true
+        }</span>
+
+        // Check Levenshtein distance (simplified)
+        <span class="cov0" title="0">distance := levenshteinDistance(n1, n2)
+        maxLen := len(n1)
+        if len(n2) &gt; maxLen </span><span class="cov0" title="0">{
+                maxLen = len(n2)
+        }</span>
+
+        // Similar if distance is less than 40% of max length
+        <span class="cov0" title="0">return float64(distance)/float64(maxLen) &lt; 0.4</span>
+}
+
+// levenshteinDistance calculates edit distance between two strings
+func levenshteinDistance(s1, s2 string) int <span class="cov8" title="1">{
+        if len(s1) == 0 </span><span class="cov0" title="0">{
+                return len(s2)
+        }</span>
+        <span class="cov8" title="1">if len(s2) == 0 </span><span class="cov0" title="0">{
+                return len(s1)
+        }</span>
+
+        // Create matrix
+        <span class="cov8" title="1">matrix := make([][]int, len(s1)+1)
+        for i := range matrix </span><span class="cov8" title="1">{
+                matrix[i] = make([]int, len(s2)+1)
+                matrix[i][0] = i
+        }</span>
+        <span class="cov8" title="1">for j := range matrix[0] </span><span class="cov8" title="1">{
+                matrix[0][j] = j
+        }</span>
+
+        // Fill matrix
+        <span class="cov8" title="1">for i := 1; i &lt;= len(s1); i++ </span><span class="cov8" title="1">{
+                for j := 1; j &lt;= len(s2); j++ </span><span class="cov8" title="1">{
+                        cost := 0
+                        if s1[i-1] != s2[j-1] </span><span class="cov8" title="1">{
+                                cost = 1
+                        }</span>
+
+                        <span class="cov8" title="1">matrix[i][j] = min(
+                                matrix[i-1][j]+1,      // deletion
+                                matrix[i][j-1]+1,      // insertion
+                                matrix[i-1][j-1]+cost, // substitution
+                        )</span>
+                }
+        }
+
+        <span class="cov8" title="1">return matrix[len(s1)][len(s2)]</span>
+}
+
+func min(a, b, c int) int <span class="cov8" title="1">{
+        if a &lt; b </span><span class="cov8" title="1">{
+                if a &lt; c </span><span class="cov8" title="1">{
+                        return a
+                }</span>
+                <span class="cov8" title="1">return c</span>
+        }
+        <span class="cov8" title="1">if b &lt; c </span><span class="cov8" title="1">{
+                return b
+        }</span>
+        <span class="cov8" title="1">return c</span>
+}
+
+// calculateSimilarity returns a similarity score between 0.0 (completely different) and 1.0 (identical)
+func calculateSimilarity(name1, name2 string) float64 <span class="cov8" title="1">{
+        n1 := strings.ToLower(name1)
+        n2 := strings.ToLower(name2)
+
+        // Identical names
+        if n1 == n2 </span><span class="cov0" title="0">{
+                return 1.0
+        }</span>
+
+        // Check if one contains the other (very high similarity)
+        <span class="cov8" title="1">if strings.Contains(n1, n2) || strings.Contains(n2, n1) </span><span class="cov8" title="1">{
+                shorter := len(n1)
+                if len(n2) &lt; shorter </span><span class="cov0" title="0">{
+                        shorter = len(n2)
+                }</span>
+                <span class="cov8" title="1">longer := len(n1)
+                if len(n2) &gt; longer </span><span class="cov8" title="1">{
+                        longer = len(n2)
+                }</span>
+                <span class="cov8" title="1">return float64(shorter) / float64(longer)</span> // e.g., "team" in "team_member" = 0.73
+        }
+
+        // Calculate Levenshtein distance
+        <span class="cov8" title="1">distance := levenshteinDistance(n1, n2)
+        maxLen := len(n1)
+        if len(n2) &gt; maxLen </span><span class="cov8" title="1">{
+                maxLen = len(n2)
+        }</span>
+
+        // Convert distance to similarity (1.0 - normalized distance)
+        <span class="cov8" title="1">return 1.0 - (float64(distance) / float64(maxLen))</span>
+}
+
+// determineRenameConfidence determines confidence level based on similarity score and relation similarity
+func determineRenameConfidence(nameSimilarity float64, relationSimilarity float64) ConfidenceLevel <span class="cov8" title="1">{
+        // High confidence: very similar names OR similar relations with decent name match
+        if nameSimilarity &gt;= 0.7 || (nameSimilarity &gt;= 0.4 &amp;&amp; relationSimilarity &gt;= 0.7) </span><span class="cov8" title="1">{
+                return ConfidenceHigh
+        }</span>
+
+        // Medium confidence: somewhat similar names OR very similar relations
+        <span class="cov8" title="1">if nameSimilarity &gt;= 0.3 || relationSimilarity &gt;= 0.7 </span><span class="cov8" title="1">{
+                return ConfidenceMedium
+        }</span>
+
+        // Low confidence: might be worth suggesting
+        <span class="cov8" title="1">if nameSimilarity &gt;= 0.2 || relationSimilarity &gt;= 0.5 </span><span class="cov8" title="1">{
+                return ConfidenceLow
+        }</span>
+
+        // Too dissimilar - not a rename
+        <span class="cov8" title="1">return ConfidenceNone</span>
+}
+
+// haveSimilarRelations checks if two types have similar relation structures
+func haveSimilarRelations(removedTypeState, addedTypeState TypeState) float64 <span class="cov8" title="1">{
+        if len(removedTypeState.Relations) == 0 &amp;&amp; len(addedTypeState.Relations) == 0 </span><span class="cov8" title="1">{
+                return 0.0 // No relations to compare
+        }</span>
+
+        <span class="cov8" title="1">if len(removedTypeState.Relations) == 0 || len(addedTypeState.Relations) == 0 </span><span class="cov0" title="0">{
+                return 0.0 // One has relations, other doesn't
+        }</span>
+
+        // Count matching relation names
+        <span class="cov8" title="1">matchingRelations := 0
+        for oldRelName := range removedTypeState.Relations </span><span class="cov8" title="1">{
+                if _, exists := addedTypeState.Relations[oldRelName]; exists </span><span class="cov8" title="1">{
+                        matchingRelations++
+                }</span>
+        }
+
+        // Calculate Jaccard similarity: intersection / union
+        <span class="cov8" title="1">totalRelations := len(removedTypeState.Relations) + len(addedTypeState.Relations) - matchingRelations
+        if totalRelations == 0 </span><span class="cov0" title="0">{
+                return 0.0
+        }</span>
+
+        <span class="cov8" title="1">return float64(matchingRelations) / float64(totalRelations)</span>
+}
+</pre>
+		
+		<pre class="file" id="file9" style="display: none">package omg
+
+import (
+        "context"
+        "fmt"
+        "time"
+)
+
+// Tracker manages migration state using OpenFGA tuples
+// Migrations are tracked as tuples: system:migration-tracker applied migration:&lt;version&gt;
+type Tracker struct {
+        client *Client
+}
+
+// NewTracker creates a new migration tracker
+func NewTracker(client *Client) *Tracker <span class="cov8" title="1">{
+        return &amp;Tracker{client: client}
+}</span>
+
+// MigrationInfo contains metadata about an applied migration
+type MigrationInfo struct {
+        Version   string
+        AppliedAt time.Time
+}
+
+// GetApplied returns all applied migrations
+func (t *Tracker) GetApplied(ctx context.Context) (map[string]MigrationInfo, error) <span class="cov8" title="1">{
+        tuples, err := t.client.ReadAllTuples(ctx, ReadTuplesRequest{
+                User:   "system:migration-tracker",
+                Object: "migration:",
+        })
+        if err != nil </span><span class="cov0" title="0">{
+                // If no tuples found, return empty map (not an error)
+                return make(map[string]MigrationInfo), nil
+        }</span>
+
+        <span class="cov8" title="1">applied := make(map[string]MigrationInfo)
+        for _, tuple := range tuples </span><span class="cov8" title="1">{
+                // Extract version from "migration:&lt;version&gt;"
+                if len(tuple.Object) &gt; 10 &amp;&amp; tuple.Object[:10] == "migration:" </span><span class="cov8" title="1">{
+                        version := tuple.Object[10:]
+                        applied[version] = MigrationInfo{
+                                Version:   version,
+                                AppliedAt: time.Now(), // Note: OpenFGA doesn't store timestamps
+                        }
+                }</span>
+        }
+
+        <span class="cov8" title="1">return applied, nil</span>
+}
+
+// Record marks a migration as applied
+func (t *Tracker) Record(ctx context.Context, version, name string) error <span class="cov8" title="1">{
+        tuple := Tuple{
+                User:     "system:migration-tracker",
+                Relation: "applied",
+                Object:   fmt.Sprintf("migration:%s", version),
+        }
+
+        return t.client.WriteTuple(ctx, tuple)
+}</span>
+
+// Remove removes a migration record (used for rollback)
+func (t *Tracker) Remove(ctx context.Context, version string) error <span class="cov8" title="1">{
+        tuple := Tuple{
+                User:     "system:migration-tracker",
+                Relation: "applied",
+                Object:   fmt.Sprintf("migration:%s", version),
+        }
+
+        return t.client.DeleteTuple(ctx, tuple)
+}</span>
+</pre>
+		
+		</div>
+	</body>
+	<script>
+	(function() {
+		var files = document.getElementById('files');
+		var visible;
+		files.addEventListener('change', onChange, false);
+		function select(part) {
+			if (visible)
+				visible.style.display = 'none';
+			visible = document.getElementById(part);
+			if (!visible)
+				return;
+			files.value = part;
+			visible.style.display = 'block';
+			location.hash = part;
+		}
+		function onChange() {
+			select(files.value);
+			window.scrollTo(0, 0);
+		}
+		if (location.hash != "") {
+			select(location.hash.substr(1));
+		}
+		if (!visible) {
+			select("file0");
+		}
+	})();
+	</script>
+</html>
