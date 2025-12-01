@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/demetere/omg/pkg"
+	omg "github.com/demetere/omg"
 	"github.com/joho/godotenv"
 )
 

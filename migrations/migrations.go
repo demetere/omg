@@ -1,5 +1,5 @@
-package migrations
+package main
 
-// This file exists to make the migrations package importable
-// Individual migration files should be placed in this directory
-// and will be automatically registered via their init() functions
+// This file exists to satisfy Go's package requirements
+// Individual migration files in this directory are standalone executables (package main)
+// that can be run with `go run` during migrations

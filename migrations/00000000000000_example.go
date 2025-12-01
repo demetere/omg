@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/demetere/omg/pkg"
+	omg "github.com/demetere/omg"
 )
 
 func main() {
