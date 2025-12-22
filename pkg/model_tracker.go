@@ -83,9 +83,21 @@ func BuildModelStateFromAuthorizationModel(model openfgaSdk.AuthorizationModel) 
 			Relations: make(map[string]string),
 		}
 
+		// Get metadata for type restrictions
+		var relationsMetadata map[string]openfgaSdk.RelationMetadata
+		if metadata := typeDef.Metadata; metadata != nil {
+			relationsMetadata = metadata.GetRelations()
+		}
+
 		relations := typeDef.GetRelations()
 		for relName, relDef := range relations {
-			typeState.Relations[relName] = serializeUserset(relDef)
+			// Get type restrictions from metadata
+			var typeRestrictions []openfgaSdk.RelationReference
+			if relMeta, exists := relationsMetadata[relName]; exists {
+				typeRestrictions = relMeta.GetDirectlyRelatedUserTypes()
+			}
+			// Convert to DSL format with metadata
+			typeState.Relations[relName] = formatUsersetWithMetadata(relDef, typeRestrictions)
 		}
 
 		state.Types[typeName] = typeState
@@ -121,10 +133,21 @@ func BuildModelState(model openfgaSdk.AuthorizationModel) *ModelState {
 			Relations: make(map[string]string),
 		}
 
+		// Get metadata for type restrictions
+		var relationsMetadata map[string]openfgaSdk.RelationMetadata
+		if metadata := typeDef.Metadata; metadata != nil {
+			relationsMetadata = metadata.GetRelations()
+		}
+
 		relations := typeDef.GetRelations()
 		for relName, relDef := range relations {
-			// Convert relation definition to string for comparison
-			typeState.Relations[relName] = serializeUserset(relDef)
+			// Get type restrictions from metadata
+			var typeRestrictions []openfgaSdk.RelationReference
+			if relMeta, exists := relationsMetadata[relName]; exists {
+				typeRestrictions = relMeta.GetDirectlyRelatedUserTypes()
+			}
+			// Convert to DSL format with metadata
+			typeState.Relations[relName] = formatUsersetWithMetadata(relDef, typeRestrictions)
 		}
 
 		state.Types[typeDef.Type] = typeState
@@ -156,6 +179,21 @@ func DetectChanges(oldState, newState *ModelState) []ModelChange {
 				TypeName: typeName,
 				Details:  fmt.Sprintf("New type '%s' with %d relations", typeName, len(typeState.Relations)),
 			})
+
+			// Sort relations by dependency order
+			sortedRelations := sortRelationsByDependency(typeState.Relations)
+
+			// Also add changes for each relation in the new type
+			for _, relName := range sortedRelations {
+				relDef := typeState.Relations[relName]
+				changes = append(changes, ModelChange{
+					Type:         ChangeTypeAddRelation,
+					TypeName:     typeName,
+					RelationName: relName,
+					NewValue:     relDef,
+					Details:      fmt.Sprintf("Add relation '%s.%s'", typeName, relName),
+				})
+			}
 		}
 	}
 
@@ -581,4 +619,112 @@ func haveSimilarRelations(removedTypeState, addedTypeState TypeState) float64 {
 	}
 
 	return float64(matchingRelations) / float64(totalRelations)
+}
+
+// sortRelationsByDependency sorts relations so that dependencies come before dependents
+// Direct relations (e.g., [user]) come first, then computed relations (e.g., owner from team),
+// then derived permissions (e.g., can_view: member or owner)
+func sortRelationsByDependency(relations map[string]string) []string {
+	// Build dependency graph
+	deps := make(map[string][]string) // relation -> relations it depends on
+
+	for relName, relDef := range relations {
+		deps[relName] = extractRelationDependencies(relDef, relName)
+	}
+
+	// Topological sort using Kahn's algorithm
+	inDegree := make(map[string]int)
+	for relName := range relations {
+		inDegree[relName] = 0
+	}
+
+	for _, dependencies := range deps {
+		for _, dep := range dependencies {
+			if _, exists := relations[dep]; exists {
+				inDegree[dep]++
+			}
+		}
+	}
+
+	// Find nodes with no incoming edges
+	var queue []string
+	for relName, degree := range inDegree {
+		if degree == 0 {
+			queue = append(queue, relName)
+		}
+	}
+
+	var sorted []string
+	for len(queue) > 0 {
+		// Pop from queue
+		current := queue[0]
+		queue = queue[1:]
+		sorted = append(sorted, current)
+
+		// Reduce in-degree for dependents
+		for dependent, dependencies := range deps {
+			for _, dep := range dependencies {
+				if dep == current {
+					inDegree[dependent]--
+					if inDegree[dependent] == 0 {
+						queue = append(queue, dependent)
+					}
+				}
+			}
+		}
+	}
+
+	// If we couldn't sort everything (cycle detected), append remaining relations
+	if len(sorted) < len(relations) {
+		for relName := range relations {
+			found := false
+			for _, s := range sorted {
+				if s == relName {
+					found = true
+					break
+				}
+			}
+			if !found {
+				sorted = append(sorted, relName)
+			}
+		}
+	}
+
+	return sorted
+}
+
+// extractRelationDependencies extracts relation names that a relation definition depends on
+func extractRelationDependencies(relDef, currentRel string) []string {
+	var deps []string
+
+	// Skip direct assignments like [user], [team]
+	if strings.HasPrefix(relDef, "[") {
+		return deps
+	}
+
+	// Extract words that could be relation names (simplified)
+	// This handles cases like: "owner", "member or owner", "admin from team", etc.
+	words := strings.FieldsFunc(relDef, func(r rune) bool {
+		return r == ' ' || r == ',' || r == ':' || r == '#'
+	})
+
+	for _, word := range words {
+		// Skip keywords and the relation itself
+		if word == "or" || word == "and" || word == "but" || word == "not" ||
+		   word == "from" || word == "define" || word == currentRel ||
+		   strings.HasPrefix(word, "[") || strings.HasSuffix(word, "]") {
+			continue
+		}
+
+		// This might be a relation dependency
+		deps = append(deps, word)
+	}
+
+	return deps
+}
+
+// formatUsersetToDSL wraps formatUserset from client.go
+// This converts an SDK Userset struct to DSL string format
+func formatUsersetToDSL(userset openfgaSdk.Userset) string {
+	return formatUserset(userset)
 }

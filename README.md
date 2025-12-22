@@ -43,7 +43,7 @@ go install ./cmd/omg
 
 ### 2. Configure Environment
 
-Create a `.env` file:
+Create a `.env` file or set environment variables:
 
 ```env
 OPENFGA_API_URL=http://localhost:8080
@@ -51,17 +51,15 @@ OPENFGA_STORE_ID=your-store-id
 OPENFGA_AUTH_METHOD=none
 ```
 
-### 3. Initialize Your Store
-
-```bash
-./omg init my-store-name
+For production with authentication:
+```env
+OPENFGA_API_URL=https://api.fga.example
+OPENFGA_STORE_ID=01HXYZ...
+OPENFGA_AUTH_METHOD=token
+OPENFGA_API_TOKEN=your-api-token
 ```
 
-This creates:
-- `.omg/` directory for tracking state
-- `model.fga.example` as a starting point
-
-### 4. Create Your Authorization Model
+### 3. Create Your Authorization Model
 
 Create or edit `model.fga`:
 
@@ -78,7 +76,7 @@ type document
     define viewer: [user] or editor
 ```
 
-### 5. See What Changed
+### 4. See What Changed
 
 ```bash
 ./omg diff
@@ -96,7 +94,7 @@ Detected 2 change(s):
 Run 'omg generate <name>' to create a migration for these changes
 ```
 
-### 6. Generate Migration
+### 5. Generate Migration
 
 ```bash
 ./omg generate initial_model
@@ -114,7 +112,7 @@ Next steps:
   3. Run 'omg up' to apply the migration
 ```
 
-### 7. Review & Apply
+### 6. Review & Apply
 
 ```bash
 # Review the generated code

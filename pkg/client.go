@@ -267,24 +267,114 @@ func (c *Client) GetCurrentModel(ctx context.Context) (string, error) {
 
 // formatModelAsDSL converts an authorization model to DSL format
 func formatModelAsDSL(model openfgaSdk.AuthorizationModel) string {
-	// This is a simplified DSL formatter
-	// For production, you might want to use the official FGA CLI's formatter
-	var dsl string
+	var dsl strings.Builder
+
+	// Add schema version if present
+	if schemaVersion := model.GetSchemaVersion(); schemaVersion != "" {
+		dsl.WriteString(fmt.Sprintf("model\n  schema %s\n\n", schemaVersion))
+	}
 
 	for _, typeDef := range model.GetTypeDefinitions() {
-		dsl += fmt.Sprintf("type %s\n", typeDef.GetType())
+		dsl.WriteString(fmt.Sprintf("type %s\n", typeDef.GetType()))
 
 		relations := typeDef.GetRelations()
 		if len(relations) > 0 {
-			dsl += "  relations\n"
-			for relName := range relations {
-				dsl += fmt.Sprintf("    define %s: [user]\n", relName)
+			dsl.WriteString("  relations\n")
+
+			// Get metadata for type restrictions
+			var relationsMetadata map[string]openfgaSdk.RelationMetadata
+			if metadata := typeDef.Metadata; metadata != nil {
+				relationsMetadata = metadata.GetRelations()
+			}
+
+			for relName, userset := range relations {
+				var typeRestrictions []openfgaSdk.RelationReference
+				if relMeta, exists := relationsMetadata[relName]; exists {
+					typeRestrictions = relMeta.GetDirectlyRelatedUserTypes()
+				}
+				dsl.WriteString(fmt.Sprintf("    define %s: %s\n", relName, formatUsersetWithMetadata(userset, typeRestrictions)))
 			}
 		}
-		dsl += "\n"
+		dsl.WriteString("\n")
 	}
 
-	return dsl
+	return dsl.String()
+}
+
+// formatUserset converts a Userset to DSL format (without metadata)
+func formatUserset(userset openfgaSdk.Userset) string {
+	return formatUsersetWithMetadata(userset, nil)
+}
+
+// formatUsersetWithMetadata converts a Userset to DSL format with type restriction metadata
+func formatUsersetWithMetadata(userset openfgaSdk.Userset, typeRestrictions []openfgaSdk.RelationReference) string {
+	// Direct assignment (e.g., [user, group#member])
+	if this := userset.This; this != nil {
+		if len(typeRestrictions) > 0 {
+			// Format type restrictions
+			var types []string
+			for _, tr := range typeRestrictions {
+				if tr.Relation != nil && *tr.Relation != "" {
+					types = append(types, fmt.Sprintf("%s#%s", tr.Type, *tr.Relation))
+				} else {
+					types = append(types, tr.Type)
+				}
+			}
+			return "[" + strings.Join(types, ", ") + "]"
+		}
+		// Fallback if no metadata
+		return "[user]"
+	}
+
+	// Computed userset (e.g., owner)
+	if computedUserset := userset.ComputedUserset; computedUserset != nil {
+		if rel := computedUserset.Relation; rel != nil {
+			return *rel
+		}
+	}
+
+	// Tuple to userset (e.g., parent->owner or owner from parent)
+	if tupleToUserset := userset.TupleToUserset; tupleToUserset != nil {
+		tupleset := ""
+		if tupleToUserset.Tupleset.Relation != nil {
+			tupleset = *tupleToUserset.Tupleset.Relation
+		}
+
+		computedUserset := ""
+		if tupleToUserset.ComputedUserset.Relation != nil {
+			computedUserset = *tupleToUserset.ComputedUserset.Relation
+		}
+
+		// Use "from" syntax: owner from parent
+		return fmt.Sprintf("%s from %s", computedUserset, tupleset)
+	}
+
+	// Union (e.g., [user] or owner)
+	if union := userset.Union; union != nil {
+		var parts []string
+		for _, child := range union.GetChild() {
+			parts = append(parts, formatUserset(child))
+		}
+		return strings.Join(parts, " or ")
+	}
+
+	// Intersection (e.g., [user] and approved)
+	if intersection := userset.Intersection; intersection != nil {
+		var parts []string
+		for _, child := range intersection.GetChild() {
+			parts = append(parts, formatUserset(child))
+		}
+		return strings.Join(parts, " and ")
+	}
+
+	// Difference (e.g., [user] but not blocked)
+	if difference := userset.Difference; difference != nil {
+		base := formatUserset(difference.Base)
+		subtract := formatUserset(difference.Subtract)
+		return fmt.Sprintf("%s but not %s", base, subtract)
+	}
+
+	return "[unknown]"
 }
 
 // WriteAuthorizationModel writes a new authorization model

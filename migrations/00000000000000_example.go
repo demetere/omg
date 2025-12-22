@@ -16,11 +16,12 @@ import (
 
 func main() {
 	// Get connection info from environment
-	client, err := omg.NewClient(
-		os.Getenv("OPENFGA_API_URL"),
-		os.Getenv("OPENFGA_STORE_ID"),
-		os.Getenv("OPENFGA_API_TOKEN"),
-	)
+	client, err := omg.NewClient(omg.Config{
+		ApiURL:     os.Getenv("OPENFGA_API_URL"),
+		StoreID:    os.Getenv("OPENFGA_STORE_ID"),
+		AuthMethod: getAuthMethod(),
+		APIToken:   os.Getenv("OPENFGA_API_TOKEN"),
+	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to create client: %v\n", err)
 		os.Exit(1)
@@ -40,6 +41,13 @@ func main() {
 			os.Exit(1)
 		}
 	}
+}
+
+func getAuthMethod() string {
+	if token := os.Getenv("OPENFGA_API_TOKEN"); token != "" {
+		return "token"
+	}
+	return "none"
 }
 
 func up(ctx context.Context, client *omg.Client) error {

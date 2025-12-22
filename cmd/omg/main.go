@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"flag"
 	"fmt"
 	"net/url"
@@ -14,12 +15,14 @@ import (
 
 	omg "github.com/demetere/omg"
 	"github.com/joho/godotenv"
+	_ "github.com/lib/pq" // PostgreSQL driver
 )
 
 var (
-	migrationsDir string
-	dbURL         string
-	modelPath     string
+	migrationsDir    string
+	dbURL            string
+	migrationDBURL   string
+	modelPath        string
 )
 
 func main() {
@@ -41,6 +44,7 @@ func main() {
 	flagSet := flag.NewFlagSet(command, flag.ExitOnError)
 	flagSet.StringVar(&migrationsDir, "dir", "migrations", "directory with migration files")
 	flagSet.StringVar(&dbURL, "dburl", os.Getenv("OPENFGA_DATABASE_URL"), "OpenFGA database URL")
+	flagSet.StringVar(&migrationDBURL, "migration-db", os.Getenv("MIGRATION_DATABASE_URL"), "Database URL for migration tracking (defaults to OPENFGA_DATASTORE_URI)")
 	flagSet.StringVar(&modelPath, "model", "model.fga", "path to authorization model file")
 	flagSet.Parse(os.Args[2:])
 
@@ -285,8 +289,43 @@ func parseDBURL(dburl string) (omg.Config, error) {
 	return cfg, nil
 }
 
+func initMigrationDB() (*sql.DB, error) {
+	// Default to OPENFGA_DATASTORE_URI if migrationDBURL is not set
+	dbURL := migrationDBURL
+	if dbURL == "" {
+		// Try to use the same database as OpenFGA
+		dbURL = os.Getenv("OPENFGA_DATASTORE_URI")
+		if dbURL == "" {
+			return nil, fmt.Errorf("MIGRATION_DATABASE_URL or OPENFGA_DATASTORE_URI is required. Set via environment variable or --migration-db flag")
+		}
+		fmt.Println("Using OpenFGA database for migration tracking (OPENFGA_DATASTORE_URI)")
+	}
+
+	db, err := sql.Open("postgres", dbURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open database: %w", err)
+	}
+
+	// Test the connection
+	if err := db.Ping(); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("failed to connect to database: %w", err)
+	}
+
+	return db, nil
+}
+
 func runUp(ctx context.Context, client *omg.Client) error {
-	tracker := omg.NewTracker(client)
+	db, err := initMigrationDB()
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	tracker, err := omg.NewTracker(db)
+	if err != nil {
+		return fmt.Errorf("failed to initialize tracker: %w", err)
+	}
 
 	// Find all migration files in directory
 	pattern := filepath.Join(migrationsDir, "*_*.go")
@@ -375,7 +414,17 @@ func extractNameFromFilename(filename string) string {
 }
 
 func runDown(ctx context.Context, client *omg.Client) error {
-	tracker := omg.NewTracker(client)
+	db, err := initMigrationDB()
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	tracker, err := omg.NewTracker(db)
+	if err != nil {
+		return fmt.Errorf("failed to initialize tracker: %w", err)
+	}
+
 	applied, err := tracker.GetApplied(ctx)
 	if err != nil {
 		return err
@@ -446,7 +495,16 @@ func runDown(ctx context.Context, client *omg.Client) error {
 }
 
 func showStatus(ctx context.Context, client *omg.Client) error {
-	tracker := omg.NewTracker(client)
+	db, err := initMigrationDB()
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	tracker, err := omg.NewTracker(db)
+	if err != nil {
+		return fmt.Errorf("failed to initialize tracker: %w", err)
+	}
 
 	// Find all migration files in directory
 	pattern := filepath.Join(migrationsDir, "*_*.go")

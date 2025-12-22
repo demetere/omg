@@ -47,16 +47,17 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/demetere/omg/pkg"
+	omg "github.com/demetere/omg"
 )
 
 func main() {
 	// Get connection info from environment
-	client, err := omg.NewClient(
-		os.Getenv("OPENFGA_API_URL"),
-		os.Getenv("OPENFGA_STORE_ID"),
-		os.Getenv("OPENFGA_API_TOKEN"),
-	)
+	client, err := omg.NewClient(omg.Config{
+		ApiURL:     os.Getenv("OPENFGA_API_URL"),
+		StoreID:    os.Getenv("OPENFGA_STORE_ID"),
+		AuthMethod: getAuthMethod(),
+		APIToken:   os.Getenv("OPENFGA_API_TOKEN"),
+	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to create client: %v\n", err)
 		os.Exit(1)
@@ -76,6 +77,13 @@ func main() {
 			os.Exit(1)
 		}
 	}
+}
+
+func getAuthMethod() string {
+	if token := os.Getenv("OPENFGA_API_TOKEN"); token != "" {
+		return "token"
+	}
+	return "none"
 }
 
 `)
@@ -411,15 +419,17 @@ func generateRenameType(change ModelChange) string {
 func generateRemoveType(change ModelChange) string {
 	return fmt.Sprintf(`	// Remove type: %s
 	// Step 1: Delete all tuples of this type
-	tuples, err := omg.ReadAllTuples(ctx, client, "%s", "")
-	if err != nil {
-		return fmt.Errorf("failed to read tuples: %%w", err)
-	}
+	{
+		tuples, err := omg.ReadAllTuples(ctx, client, "%s", "")
+		if err != nil {
+			return fmt.Errorf("failed to read tuples: %%w", err)
+		}
 
-	if len(tuples) > 0 {
-		fmt.Printf("Deleting %%d tuples of type %s\n", len(tuples))
-		if err := omg.DeleteTuplesBatch(ctx, client, tuples); err != nil {
-			return fmt.Errorf("failed to delete tuples: %%w", err)
+		if len(tuples) > 0 {
+			fmt.Printf("Deleting %%d tuples of type %s\n", len(tuples))
+			if err := omg.DeleteTuplesBatch(ctx, client, tuples); err != nil {
+				return fmt.Errorf("failed to delete tuples: %%w", err)
+			}
 		}
 	}
 
@@ -449,16 +459,19 @@ func sanitizeName(name string) string {
 }
 
 func extractRelationDefinition(serialized string) string {
-	// This is a placeholder - you'd need to properly deserialize
-	// the Userset and convert back to DSL format
-	// For now, return a simple default
-	return "[user]"
+	// The serialized string IS the DSL definition stored in ModelChange.NewValue
+	// It's already in the correct format from model_tracker.go
+	if serialized == "" {
+		return "[user]" // fallback
+	}
+	// Escape quotes for embedding in Go string literal
+	return strings.ReplaceAll(serialized, `"`, `\"`)
 }
 
 func orderChangesForUp(changes []ModelChange) []ModelChange {
 	var ordered []ModelChange
 
-	// Order: add types, add relations, update relations, renames, removes
+	// Order: add types, add relations (sorted by dependency), update relations, renames, removes
 	order := []ChangeType{
 		ChangeTypeAddType,
 		ChangeTypeAddRelation,
@@ -470,14 +483,220 @@ func orderChangesForUp(changes []ModelChange) []ModelChange {
 	}
 
 	for _, changeType := range order {
-		for _, change := range changes {
-			if change.Type == changeType {
-				ordered = append(ordered, change)
+		if changeType == ChangeTypeAddRelation {
+			// Special handling for AddRelation - sort by dependencies across all types
+			var relationChanges []ModelChange
+			for _, change := range changes {
+				if change.Type == ChangeTypeAddRelation {
+					relationChanges = append(relationChanges, change)
+				}
+			}
+			sorted := sortRelationChanges(relationChanges)
+			ordered = append(ordered, sorted...)
+		} else {
+			for _, change := range changes {
+				if change.Type == changeType {
+					ordered = append(ordered, change)
+				}
 			}
 		}
 	}
 
 	return ordered
+}
+
+// sortRelationChanges sorts relation changes by dependency across all types
+func sortRelationChanges(changes []ModelChange) []ModelChange {
+	// Build a map of all relations for dependency analysis
+	relations := make(map[string]string) // "type.relation" -> definition
+	changeMap := make(map[string]ModelChange) // "type.relation" -> change
+
+	for _, change := range changes {
+		key := fmt.Sprintf("%s.%s", change.TypeName, change.RelationName)
+		relations[key] = change.NewValue
+		changeMap[key] = change
+	}
+
+	// Build dependency graph
+	deps := make(map[string][]string) // relation -> dependencies
+
+	for key, relDef := range relations {
+		parts := strings.Split(key, ".")
+		typeName := parts[0]
+		relName := parts[1]
+
+		// Extract dependencies
+		depNames := extractRelationDependenciesFromDef(relDef, relName)
+
+		// Convert to full keys (type.relation)
+		var fullDeps []string
+
+		// Special handling for tuple-to-userset (e.g., "member from team")
+		if strings.Contains(relDef, " from ") {
+			parts := strings.Split(relDef, " from ")
+			if len(parts) == 2 {
+				computedUserset := strings.TrimSpace(parts[0])
+				tuplesetType := strings.TrimSpace(parts[1])
+				// The dependency is on tuplesetType.computedUserset
+				depKey := fmt.Sprintf("%s.%s", tuplesetType, computedUserset)
+				if _, exists := relations[depKey]; exists {
+					fullDeps = append(fullDeps, depKey)
+				}
+			}
+		} else if strings.Contains(relDef, "->") {
+			// Handle arrow syntax: "parent->owner"
+			parts := strings.Split(relDef, "->")
+			if len(parts) == 2 {
+				_ = strings.TrimSpace(parts[0]) // tuplesetRel - not used for dependency
+				computedUserset := strings.TrimSpace(parts[1])
+				// The dependency is on typeName.computedUserset
+				depKey := fmt.Sprintf("%s.%s", typeName, computedUserset)
+				if _, exists := relations[depKey]; exists {
+					fullDeps = append(fullDeps, depKey)
+				}
+			}
+		} else {
+			// Regular dependencies (e.g., "owner", "[user] or owner")
+			for _, depName := range depNames {
+				// Check if it exists in same type first
+				sameTypeKey := fmt.Sprintf("%s.%s", typeName, depName)
+				if _, exists := relations[sameTypeKey]; exists {
+					fullDeps = append(fullDeps, sameTypeKey)
+				} else {
+					// Could be a cross-type reference, search all types
+					for otherKey := range relations {
+						if strings.HasSuffix(otherKey, "."+depName) {
+							fullDeps = append(fullDeps, otherKey)
+						}
+					}
+				}
+			}
+		}
+		deps[key] = fullDeps
+	}
+
+	// Topological sort
+	sorted := topologicalSort(deps, relations)
+
+	// Convert back to changes
+	var result []ModelChange
+	for _, key := range sorted {
+		if change, exists := changeMap[key]; exists {
+			result = append(result, change)
+		}
+	}
+
+	return result
+}
+
+// topologicalSort performs topological sort on the dependency graph
+func topologicalSort(deps map[string][]string, allNodes map[string]string) []string {
+	inDegree := make(map[string]int)
+	for node := range allNodes {
+		inDegree[node] = 0
+	}
+
+	// Count incoming edges: if node X depends on Y, then X has an incoming edge
+	for node, dependencies := range deps {
+		inDegree[node] = len(dependencies)
+	}
+
+	// Find nodes with no incoming edges
+	var queue []string
+	for node, degree := range inDegree {
+		if degree == 0 {
+			queue = append(queue, node)
+		}
+	}
+
+	var sorted []string
+	for len(queue) > 0 {
+		current := queue[0]
+		queue = queue[1:]
+		sorted = append(sorted, current)
+
+		// Reduce in-degree for dependents
+		for dependent, dependencies := range deps {
+			for _, dep := range dependencies {
+				if dep == current {
+					inDegree[dependent]--
+					if inDegree[dependent] == 0 {
+						queue = append(queue, dependent)
+					}
+				}
+			}
+		}
+	}
+
+	// If we couldn't sort everything (cycle), append remaining
+	if len(sorted) < len(allNodes) {
+		for node := range allNodes {
+			found := false
+			for _, s := range sorted {
+				if s == node {
+					found = true
+					break
+				}
+			}
+			if !found {
+				sorted = append(sorted, node)
+			}
+		}
+	}
+
+	return sorted
+}
+
+// extractRelationDependenciesFromDef extracts relation names from a definition
+// Returns relation names that this definition depends on
+// For "member from team", returns ["member"] (the computed userset, not the tupleset)
+// The tupleset ("team") is handled separately as it's just a type reference
+func extractRelationDependenciesFromDef(relDef, currentRel string) []string {
+	var deps []string
+
+	// Handle tuple-to-userset with 'from' syntax: "member from team"
+	// This depends on the "member" relation (computedUserset), not "team" (which is the tupleset type)
+	// The actual dependency will be resolved later as "team.member"
+	if strings.Contains(relDef, " from ") {
+		parts := strings.Split(relDef, " from ")
+		if len(parts) == 2 {
+			computedUserset := strings.TrimSpace(parts[0])
+			// The computed userset is the relation we depend on
+			deps = append(deps, computedUserset)
+			return deps
+		}
+	}
+
+	// Handle arrow syntax: "parent->owner"
+	// This depends on the "owner" relation
+	if strings.Contains(relDef, "->") {
+		parts := strings.Split(relDef, "->")
+		if len(parts) == 2 {
+			computedUserset := strings.TrimSpace(parts[1])
+			deps = append(deps, computedUserset)
+			return deps
+		}
+	}
+
+	// Extract words that could be relation names
+	words := strings.FieldsFunc(relDef, func(r rune) bool {
+		return r == ' ' || r == ',' || r == ':' || r == '#'
+	})
+
+	for _, word := range words {
+		// Skip keywords and the relation itself
+		if word == "or" || word == "and" || word == "but" || word == "not" ||
+			word == "from" || word == "define" || word == currentRel ||
+			strings.HasPrefix(word, "[") || strings.HasSuffix(word, "]") ||
+			strings.Contains(word, "[") || strings.Contains(word, "]") {
+			continue
+		}
+
+		// This might be a relation dependency
+		deps = append(deps, word)
+	}
+
+	return deps
 }
 
 func orderChangesForDown(changes []ModelChange) []ModelChange {

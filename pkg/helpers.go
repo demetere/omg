@@ -463,6 +463,34 @@ func AddRelationToType(ctx context.Context, client *Client, typeName, relationNa
 			// Add relation
 			relations[relationName] = userset
 			currentModel.TypeDefinitions[i].Relations = &relations
+
+			// Extract and set type restrictions in metadata
+			// Only set metadata for direct relations (with brackets), not for computed relations
+			typeRestrictions := extractTypeRestrictions(relationDef)
+			fmt.Printf("DEBUG: Adding %s.%s with def='%s', extracted types=%+v\n", typeName, relationName, relationDef, typeRestrictions)
+			// Only set DirectlyRelatedUserTypes for direct relations (those with [...])
+			// Tuple-to-userset relations (with 'from' or '->') should NOT have this metadata
+			isDirect := strings.Contains(relationDef, "[")
+			if len(typeRestrictions) > 0 && isDirect {
+				// Ensure metadata exists
+				if currentModel.TypeDefinitions[i].Metadata == nil {
+					currentModel.TypeDefinitions[i].Metadata = &openfgaSdk.Metadata{}
+				}
+
+				// Ensure relations metadata map exists
+				if currentModel.TypeDefinitions[i].Metadata.Relations == nil {
+					relationsMetadata := make(map[string]openfgaSdk.RelationMetadata)
+					currentModel.TypeDefinitions[i].Metadata.Relations = &relationsMetadata
+				}
+
+				// Set directly related user types for this relation
+				relationsMetadata := *currentModel.TypeDefinitions[i].Metadata.Relations
+				relationsMetadata[relationName] = openfgaSdk.RelationMetadata{
+					DirectlyRelatedUserTypes: &typeRestrictions,
+				}
+				currentModel.TypeDefinitions[i].Metadata.Relations = &relationsMetadata
+			}
+
 			break
 		}
 	}

@@ -93,6 +93,34 @@ func parseDSLToModel(dsl string) (openfgaSdk.AuthorizationModel, error) {
 			relations := currentType.GetRelations()
 			relations[relationName] = userset
 			currentType.Relations = &relations
+
+			// Extract and set type restrictions in metadata
+			// Only set metadata for direct relations (with brackets), not for computed relations
+			typeRestrictions := extractTypeRestrictions(relationDef)
+			// Only set DirectlyRelatedUserTypes for direct relations (those with [...])
+			// Tuple-to-userset relations (with 'from' or '->') should NOT have this metadata
+			isDirect := strings.Contains(relationDef, "[")
+			if len(typeRestrictions) > 0 && isDirect {
+				// Ensure metadata exists
+				if currentType.Metadata == nil {
+					currentType.Metadata = &openfgaSdk.Metadata{}
+				}
+				metadata := currentType.GetMetadata()
+
+				// Ensure relations metadata map exists
+				if metadata.Relations == nil {
+					relationsMetadata := make(map[string]openfgaSdk.RelationMetadata)
+					metadata.Relations = &relationsMetadata
+				}
+
+				// Set directly related user types for this relation
+				relationsMetadata := metadata.GetRelations()
+				relationsMetadata[relationName] = openfgaSdk.RelationMetadata{
+					DirectlyRelatedUserTypes: &typeRestrictions,
+				}
+				metadata.Relations = &relationsMetadata
+				currentType.Metadata = &metadata
+			}
 		}
 	}
 
@@ -250,6 +278,78 @@ func parseRelationDefinition(def string) (openfgaSdk.Userset, error) {
 	}
 
 	return userset, fmt.Errorf("unable to parse relation definition: %s", def)
+}
+
+// extractTypeRestrictions extracts type restrictions from a relation definition
+// For example: "[user]" returns [{Type: "user"}], "[user, group#member]" returns [{Type: "user"}, {Type: "group", Relation: "member"}]
+// For tuple-to-userset like "admin from team", returns [{Type: "team"}]
+func extractTypeRestrictions(def string) []openfgaSdk.RelationReference {
+	var typeRestrictions []openfgaSdk.RelationReference
+
+	// Handle tuple-to-userset with 'from' syntax: admin from team
+	// The tupleset is the type that should be in DirectlyRelatedUserTypes
+	if strings.Contains(def, " from ") {
+		parts := strings.Split(def, " from ")
+		if len(parts) == 2 {
+			tupleset := strings.TrimSpace(parts[1])
+			typeRestrictions = append(typeRestrictions, openfgaSdk.RelationReference{
+				Type: tupleset,
+			})
+			return typeRestrictions
+		}
+	}
+
+	// Handle arrow syntax: parent->owner (tupleset is parent)
+	if strings.Contains(def, "->") {
+		parts := strings.Split(def, "->")
+		if len(parts) == 2 {
+			tupleset := strings.TrimSpace(parts[0])
+			typeRestrictions = append(typeRestrictions, openfgaSdk.RelationReference{
+				Type: tupleset,
+			})
+			return typeRestrictions
+		}
+	}
+
+	// Check if definition contains direct type restrictions [...]
+	if !strings.Contains(def, "[") || !strings.Contains(def, "]") {
+		return typeRestrictions
+	}
+
+	// Extract content between []
+	start := strings.Index(def, "[")
+	end := strings.Index(def, "]")
+	if start == -1 || end == -1 || end <= start {
+		return typeRestrictions
+	}
+
+	typesStr := def[start+1 : end]
+	typeList := strings.Split(typesStr, ",")
+
+	for _, t := range typeList {
+		t = strings.TrimSpace(t)
+		if t == "" {
+			continue
+		}
+
+		// Parse type#relation format
+		if strings.Contains(t, "#") {
+			parts := strings.Split(t, "#")
+			if len(parts) == 2 {
+				typeRestrictions = append(typeRestrictions, openfgaSdk.RelationReference{
+					Type:     parts[0],
+					Relation: openfgaSdk.PtrString(parts[1]),
+				})
+			}
+		} else {
+			// Simple type reference
+			typeRestrictions = append(typeRestrictions, openfgaSdk.RelationReference{
+				Type: t,
+			})
+		}
+	}
+
+	return typeRestrictions
 }
 
 // generateModelDiff generates a human-readable diff between two models
